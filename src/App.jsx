@@ -18,6 +18,8 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
+const ADMIN_EMAILS = ['best@example.com'];
+
 const initialForm = {
   title: '',
   brand: '',
@@ -56,38 +58,22 @@ function ListingCard({ item, onSelect }) {
       <div className="listing-image">대표 이미지</div>
       <div className="listing-body">
         <div className="listing-topline">
-          <span className="badge">
-            {item.featured ? '추천매물' : item.status === 'active' ? '일반매물' : item.status === 'pending' ? '승인대기' : '판매완료'}
-          </span>
+          <span className="badge">{item.featured ? '추천매물' : '일반매물'}</span>
           <span className="seller-name">{item.sellerName || '업체명 없음'}</span>
         </div>
         <h3 className="listing-title">{item.title}</h3>
         <div className="listing-spec-grid">
-          <div className="spec-box">
-            <span>연식</span>
-            <strong>{item.year || '-'}</strong>
-          </div>
-          <div className="spec-box">
-            <span>마스트</span>
-            <strong>{item.mast || '-'}</strong>
-          </div>
-          <div className="spec-box">
-            <span>가동시간</span>
-            <strong>{item.hours || '-'}</strong>
-          </div>
-          <div className="spec-box">
-            <span>배터리</span>
-            <strong>{item.battery || '-'}</strong>
-          </div>
+          <div className="spec-box"><span>연식</span><strong>{item.year || '-'}</strong></div>
+          <div className="spec-box"><span>마스트</span><strong>{item.mast || '-'}</strong></div>
+          <div className="spec-box"><span>가동시간</span><strong>{item.hours || '-'}</strong></div>
+          <div className="spec-box"><span>배터리</span><strong>{item.battery || '-'}</strong></div>
         </div>
         <div className="listing-footer">
           <div>
             <div className="price-label">판매가</div>
             <div className="price-value">{item.price ? `${item.price}만원` : '-'}</div>
           </div>
-          <button className="btn btn-light" onClick={() => onSelect(item)}>
-            상세보기
-          </button>
+          <button className="btn btn-light" onClick={() => onSelect(item)}>상세보기</button>
         </div>
       </div>
     </div>
@@ -96,14 +82,11 @@ function ListingCard({ item, onSelect }) {
 
 function Modal({ open, onClose, children }) {
   if (!open) return null;
-
   return (
     <div className="modal-backdrop">
       <div className="modal-card">
         <div className="modal-actions">
-          <button className="btn btn-outline" onClick={onClose}>
-            닫기
-          </button>
+          <button className="btn btn-outline" onClick={onClose}>닫기</button>
         </div>
         {children}
       </div>
@@ -134,6 +117,8 @@ export default function App() {
   const [listingForm, setListingForm] = useState(initialForm);
   const [notice, setNotice] = useState('');
 
+  const isAdmin = !!(currentUser && (ADMIN_EMAILS.includes(currentUser.email || '') || currentCompany?.role === 'admin'));
+
   useEffect(() => {
     document.title = 'FORKLIFT MARKET | 중고지게차 매물 플랫폼';
   }, []);
@@ -143,7 +128,6 @@ export default function App() {
       setCurrentUser(user || null);
       if (!user) setCurrentCompany(null);
     });
-
     return () => unsubAuth();
   }, []);
 
@@ -178,46 +162,35 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [notice]);
 
-  const activeListings = useMemo(() => {
-    return listings.filter((item) => item.status === 'active' || item.status === 'pending');
-  }, [listings]);
+  const visibleListings = useMemo(() => listings.filter((item) => item.status === 'active'), [listings]);
+  const pendingListings = useMemo(() => listings.filter((item) => item.status === 'pending'), [listings]);
 
   const filteredListings = useMemo(() => {
-    return activeListings.filter((item) => {
+    return visibleListings.filter((item) => {
       const matchKeyword = keyword
         ? [item.title, item.brand, item.ton, item.location, item.sellerName, item.description]
             .join(' ')
             .toLowerCase()
             .includes(keyword.toLowerCase())
         : true;
-
       const matchBrand = brandFilter ? item.brand === brandFilter : true;
       const matchTon = tonFilter ? item.ton === tonFilter : true;
-
       return matchKeyword && matchBrand && matchTon;
     });
-  }, [activeListings, keyword, brandFilter, tonFilter]);
+  }, [visibleListings, keyword, brandFilter, tonFilter]);
 
-  const featuredListings = useMemo(() => {
-    return activeListings.filter((item) => item.featured).slice(0, 3);
-  }, [activeListings]);
+  const featuredListings = useMemo(() => visibleListings.filter((item) => item.featured).slice(0, 3), [visibleListings]);
+  const myListings = useMemo(() => currentCompany ? listings.filter((item) => item.companyId === currentCompany.id) : [], [listings, currentCompany]);
 
-  const myListings = useMemo(() => {
-    return currentCompany ? listings.filter((item) => item.companyId === currentCompany.id) : [];
-  }, [listings, currentCompany]);
-
-  const dashboardStats = useMemo(() => {
-    return {
-      totalListings: myListings.length,
-      activeCount: myListings.filter((item) => item.status === 'active').length,
-      pendingCount: myListings.filter((item) => item.status === 'pending').length,
-      soldCount: myListings.filter((item) => item.status === 'sold').length,
-    };
-  }, [myListings]);
+  const dashboardStats = useMemo(() => ({
+    totalListings: myListings.length,
+    activeCount: myListings.filter((item) => item.status === 'active').length,
+    pendingCount: myListings.filter((item) => item.status === 'pending').length,
+    soldCount: myListings.filter((item) => item.status === 'sold').length,
+  }), [myListings]);
 
   const handleSignup = async (e) => {
     e.preventDefault();
-
     if (!signupForm.companyName || !signupForm.name || !signupForm.phone || !signupForm.email || !signupForm.password) {
       setNotice('필수 항목을 입력해주세요.');
       return;
@@ -225,7 +198,6 @@ export default function App() {
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, signupForm.email, signupForm.password);
-
       await setDoc(doc(db, 'companies', cred.user.uid), {
         authUserId: cred.user.uid,
         companyName: signupForm.companyName,
@@ -234,18 +206,10 @@ export default function App() {
         email: signupForm.email,
         region: signupForm.region,
         businessType: signupForm.businessType,
+        role: ADMIN_EMAILS.includes(signupForm.email) ? 'admin' : 'seller',
         createdAt: serverTimestamp(),
       });
-
-      setSignupForm({
-        companyName: '',
-        name: '',
-        phone: '',
-        email: '',
-        password: '',
-        region: '',
-        businessType: '',
-      });
+      setSignupForm({ companyName: '', name: '', phone: '', email: '', password: '', region: '', businessType: '' });
       setNotice('업체 회원가입이 완료되었습니다.');
       setActiveTab('dashboard');
     } catch (error) {
@@ -255,7 +219,6 @@ export default function App() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-
     try {
       await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
       setLoginForm({ email: '', password: '' });
@@ -274,13 +237,11 @@ export default function App() {
 
   const handleCreateListing = async (e) => {
     e.preventDefault();
-
     if (!currentUser || !currentCompany) {
       setNotice('로그인한 업체 회원만 등록할 수 있습니다.');
       setActiveTab('seller');
       return;
     }
-
     if (!listingForm.title || !listingForm.brand || !listingForm.ton || !listingForm.year || !listingForm.price) {
       setNotice('필수 항목을 입력해주세요.');
       return;
@@ -296,9 +257,8 @@ export default function App() {
         featured: false,
         createdAt: serverTimestamp(),
       });
-
       setListingForm(initialForm);
-      setNotice('매물 등록이 완료되었습니다. 실시간으로 반영됩니다.');
+      setNotice('매물 등록이 완료되었습니다. 관리자 승인 후 공개됩니다.');
       setActiveTab('dashboard');
     } catch (error) {
       setNotice(error.message || '매물 등록 중 오류가 발생했습니다.');
@@ -311,6 +271,24 @@ export default function App() {
       setNotice('매물 상태가 변경되었습니다.');
     } catch (error) {
       setNotice(error.message || '상태 변경 중 오류가 발생했습니다.');
+    }
+  };
+
+  const approveListing = async (id) => {
+    try {
+      await updateDoc(doc(db, 'listings', id), { status: 'active' });
+      setNotice('매물이 승인되었습니다.');
+    } catch (error) {
+      setNotice(error.message || '승인 중 오류가 발생했습니다.');
+    }
+  };
+
+  const rejectListing = async (id) => {
+    try {
+      await updateDoc(doc(db, 'listings', id), { status: 'rejected' });
+      setNotice('매물이 반려되었습니다.');
+    } catch (error) {
+      setNotice(error.message || '반려 중 오류가 발생했습니다.');
     }
   };
 
@@ -390,6 +368,7 @@ export default function App() {
         .status-active { background: rgba(34,197,94,0.16); color: #86efac; }
         .status-pending { background: rgba(234,179,8,0.16); color: #fde68a; }
         .status-sold { background: rgba(107,114,128,0.22); color: #d1d5db; }
+        .status-rejected { background: rgba(239,68,68,0.16); color: #fca5a5; }
         .small-actions { display: flex; gap: 8px; flex-wrap: wrap; }
         .small-actions button { padding: 10px 12px; border-radius: 12px; background: transparent; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
         .upload-box { border-radius: 18px; padding: 28px 16px; border: 1px dashed rgba(255,255,255,0.18); text-align: center; color: #9ca3af; background: rgba(255,255,255,0.03); }
@@ -415,7 +394,6 @@ export default function App() {
               <div className="logo">FORKLIFT MARKET</div>
               <div className="logo-sub">중고지게차 매물 플랫폼</div>
             </div>
-
             <nav className="nav">
               {[
                 ['home', '홈'],
@@ -424,21 +402,16 @@ export default function App() {
                 ['register', '매물등록'],
                 ['landing', '광고안내'],
                 ...(currentCompany ? [['dashboard', '대시보드']] : []),
+                ...(isAdmin ? [['admin', '관리자']] : []),
               ].map(([key, label]) => (
-                <button key={key} className={activeTab === key ? 'active' : ''} onClick={() => setActiveTab(key)}>
-                  {label}
-                </button>
+                <button key={key} className={activeTab === key ? 'active' : ''} onClick={() => setActiveTab(key)}>{label}</button>
               ))}
               {currentUser ? <button onClick={handleLogout}>로그아웃</button> : null}
             </nav>
           </div>
         </header>
 
-        {notice ? (
-          <div className="container notice-wrap">
-            <div className="notice">{notice}</div>
-          </div>
-        ) : null}
+        {notice ? <div className="container notice-wrap"><div className="notice">{notice}</div></div> : null}
 
         {activeTab === 'home' && (
           <>
@@ -446,41 +419,24 @@ export default function App() {
               <div className="container hero-grid">
                 <div>
                   <div className="pill">업체 회원가입 · 매물 등록 · 문의 연결</div>
-                  <h1>
-                    지게차 매물 찾기부터
-                    <span>판매 · 렌탈 · 상담까지 한 번에</span>
-                  </h1>
-                  <p>
-                    여러 판매업체가 직접 가입하고 매물을 등록할 수 있는 중고지게차 매물 플랫폼입니다.
-                    실시간 매물 반영, 실시간 참여업체 수, 빠른 문의 연결까지 한곳에서 운영할 수 있습니다.
-                  </p>
+                  <h1>지게차 매물 찾기부터<span>판매 · 렌탈 · 상담까지 한 번에</span></h1>
+                  <p>여러 판매업체가 직접 가입하고 매물을 등록할 수 있는 중고지게차 매물 플랫폼입니다. 승인 완료된 매물만 공개되며, 참여업체 수와 등록 매물 수가 실시간으로 반영됩니다.</p>
                   <div className="hero-actions">
-                    <button className="btn btn-primary" onClick={() => setActiveTab('market')}>
-                      추천 매물 보기
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => setActiveTab('seller')}>
-                      업체 등록하기
-                    </button>
+                    <button className="btn btn-primary" onClick={() => setActiveTab('market')}>추천 매물 보기</button>
+                    <button className="btn btn-secondary" onClick={() => setActiveTab('seller')}>업체 등록하기</button>
                   </div>
-
                   <div className="stats-grid">
-                    <StatCard label="등록 매물" value={`${listings.length}+`} />
+                    <StatCard label="등록 매물" value={`${visibleListings.length}+`} />
                     <StatCard label="참여 업체" value={`${companies.length}+`} />
-                    <StatCard label="렌탈 문의" value="실시간" />
+                    <StatCard label="승인대기" value={`${pendingListings.length}+`} />
                     <StatCard label="A/S 연결" value="빠른 안내" />
                   </div>
                 </div>
-
                 <div className="search-panel">
                   <div className="search-panel-inner">
                     <div className="panel-title">매물 검색</div>
                     <div className="grid-gap">
-                      <input
-                        className="field"
-                        value={keyword}
-                        onChange={(e) => setKeyword(e.target.value)}
-                        placeholder="브랜드 / 톤수 / 연식 검색"
-                      />
+                      <input className="field" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="브랜드 / 톤수 / 연식 검색" />
                       <div className="two-col">
                         <select className="select" value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
                           <option value="">브랜드 전체</option>
@@ -501,17 +457,10 @@ export default function App() {
                           <option value="4.5톤이상">4.5톤이상</option>
                         </select>
                       </div>
-                      <button className="btn btn-primary" onClick={() => setActiveTab('market')}>
-                        매물 검색하기
-                      </button>
+                      <button className="btn btn-primary" onClick={() => setActiveTab('market')}>매물 검색하기</button>
                     </div>
-
                     <div className="category-row">
-                      {['현대', '두산', '클라크', '도요타', '니찌유', '스미토모', '기타브랜드'].map((category) => (
-                        <span key={category} className="chip">
-                          {category}
-                        </span>
-                      ))}
+                      {['현대','두산','클라크','도요타','니찌유','스미토모','기타브랜드'].map((category) => <span key={category} className="chip">{category}</span>)}
                     </div>
                   </div>
                 </div>
@@ -520,11 +469,9 @@ export default function App() {
 
             <section className="section">
               <div className="container">
-                <SectionTitle eyebrow="Featured Listings" title="추천 매물" subtitle="실시간 등록된 매물 중 눈에 잘 띄는 대표 장비를 먼저 보여줍니다." />
+                <SectionTitle eyebrow="Featured Listings" title="추천 매물" subtitle="승인 완료된 매물만 사용자에게 노출됩니다." />
                 <div className="listing-grid">
-                  {(featuredListings.length ? featuredListings : activeListings.slice(0, 3)).map((item) => (
-                    <ListingCard key={item.id} item={item} onSelect={setSelectedListing} />
-                  ))}
+                  {(featuredListings.length ? featuredListings : visibleListings.slice(0, 3)).map((item) => <ListingCard key={item.id} item={item} onSelect={setSelectedListing} />)}
                 </div>
               </div>
             </section>
@@ -534,16 +481,10 @@ export default function App() {
         {activeTab === 'market' && (
           <section className="section">
             <div className="container">
-              <SectionTitle eyebrow="Marketplace" title="전체 매물" subtitle="브랜드, 톤수, 키워드로 원하는 장비를 빠르게 찾을 수 있습니다." />
-
+              <SectionTitle eyebrow="Marketplace" title="전체 매물" subtitle="승인된 매물만 브랜드, 톤수, 키워드로 검색할 수 있습니다." />
               <div className="glass-card" style={{ marginBottom: 20 }}>
                 <div className="grid-gap" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                  <input
-                    className="field"
-                    value={keyword}
-                    onChange={(e) => setKeyword(e.target.value)}
-                    placeholder="브랜드 / 연식 / 지역 검색"
-                  />
+                  <input className="field" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="브랜드 / 연식 / 지역 검색" />
                   <select className="select" value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
                     <option value="">브랜드 전체</option>
                     <option value="현대">현대</option>
@@ -562,25 +503,11 @@ export default function App() {
                     <option value="3톤이상">3톤이상</option>
                     <option value="4.5톤이상">4.5톤이상</option>
                   </select>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      setKeyword('');
-                      setBrandFilter('');
-                      setTonFilter('');
-                    }}
-                  >
-                    필터 초기화
-                  </button>
+                  <button className="btn btn-secondary" onClick={() => { setKeyword(''); setBrandFilter(''); setTonFilter(''); }}>필터 초기화</button>
                 </div>
               </div>
-
               <div className="listing-grid">
-                {filteredListings.length ? (
-                  filteredListings.map((item) => <ListingCard key={item.id} item={item} onSelect={setSelectedListing} />)
-                ) : (
-                  <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>
-                )}
+                {filteredListings.length ? filteredListings.map((item) => <ListingCard key={item.id} item={item} onSelect={setSelectedListing} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
               </div>
             </div>
           </section>
@@ -590,7 +517,6 @@ export default function App() {
           <section className="section">
             <div className="container">
               <SectionTitle eyebrow="Seller Center" title="업체 회원가입 · 로그인" subtitle="업체 회원만 매물을 등록할 수 있습니다." />
-
               <div className="feature-grid">
                 <div className="dark-card">
                   <h3 className="flow-title">회원가입</h3>
@@ -607,7 +533,6 @@ export default function App() {
                     <button className="btn btn-primary">회원가입</button>
                   </form>
                 </div>
-
                 <div className="glass-card">
                   <h3 className="flow-title">로그인</h3>
                   <form className="grid-gap" style={{ marginTop: 18 }} onSubmit={handleLogin}>
@@ -624,8 +549,7 @@ export default function App() {
         {activeTab === 'register' && (
           <section className="section">
             <div className="container">
-              <SectionTitle eyebrow="Listing Form" title="매물 등록" subtitle="로그인한 업체 회원만 등록할 수 있습니다." />
-
+              <SectionTitle eyebrow="Listing Form" title="매물 등록" subtitle="로그인한 업체 회원만 등록할 수 있고, 등록 후 관리자 승인 뒤 공개됩니다." />
               <div className="feature-grid">
                 <form className="dark-card grid-gap" onSubmit={handleCreateListing}>
                   <input className="field" value={listingForm.title} onChange={(e) => setListingForm({ ...listingForm, title: e.target.value })} placeholder="모델명 입력" />
@@ -647,13 +571,12 @@ export default function App() {
                   <div className="upload-box">이미지 업로드는 다음 단계에서 붙입니다.</div>
                   <button className="btn btn-primary">매물 등록 신청</button>
                 </form>
-
                 <div className="glass-card">
                   <h3 className="flow-title">등록 안내</h3>
                   <div style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.9 }}>
                     <p>로그인한 업체 회원만 매물을 등록할 수 있습니다.</p>
-                    <p>등록된 매물은 Firestore에 저장되고, 다른 사용자 화면에도 실시간으로 반영됩니다.</p>
-                    <p>지금 단계에서는 테스트 모드로 연결하고, 오픈 전에 보안 규칙을 바꾸면 됩니다.</p>
+                    <p>등록 직후 상태는 승인대기이며, 관리자 승인 후 사용자 화면에 공개됩니다.</p>
+                    <p>승인대기 매물은 관리자 모드에서만 볼 수 있습니다.</p>
                   </div>
                 </div>
               </div>
@@ -665,52 +588,60 @@ export default function App() {
           <section className="section">
             <div className="container">
               <SectionTitle eyebrow="Seller Dashboard" title={`${currentCompany.companyName} 판매업체 관리`} subtitle="내 매물 등록 현황과 상태를 한눈에 확인할 수 있습니다." />
-
               <div className="dashboard-grid">
                 <StatCard label="전체 매물" value={dashboardStats.totalListings} />
                 <StatCard label="노출중" value={dashboardStats.activeCount} />
                 <StatCard label="승인대기" value={dashboardStats.pendingCount} />
                 <StatCard label="판매완료" value={dashboardStats.soldCount} />
               </div>
-
               <div className="dark-card" style={{ marginTop: 20 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 18 }}>
                   <h3 className="flow-title" style={{ margin: 0 }}>내 매물 관리</h3>
-                  <button className="btn btn-primary" onClick={() => setActiveTab('register')}>
-                    새 매물 등록
-                  </button>
+                  <button className="btn btn-primary" onClick={() => setActiveTab('register')}>새 매물 등록</button>
                 </div>
-
                 <div className="list-stack">
-                  {myListings.length ? (
-                    myListings.map((item) => (
-                      <div key={item.id} className="list-item">
-                        <div>
-                          <div style={{ fontSize: 20, fontWeight: 900 }}>{item.title}</div>
-                          <div className="list-meta">{item.year}년식 · {item.ton} · {item.mast} · {item.price}만원</div>
+                  {myListings.length ? myListings.map((item) => (
+                    <div key={item.id} className="list-item">
+                      <div>
+                        <div style={{ fontSize: 20, fontWeight: 900 }}>{item.title}</div>
+                        <div className="list-meta">{item.year}년식 · {item.ton} · {item.mast} · {item.price}만원</div>
+                      </div>
+                      <div>
+                        <div className={`status-badge ${item.status === 'active' ? 'status-active' : item.status === 'pending' ? 'status-pending' : item.status === 'sold' ? 'status-sold' : 'status-rejected'}`}>
+                          {item.status === 'active' ? '노출중' : item.status === 'pending' ? '승인대기' : item.status === 'sold' ? '판매완료' : '반려'}
                         </div>
-                        <div>
-                          <div
-                            className={`status-badge ${
-                              item.status === 'active'
-                                ? 'status-active'
-                                : item.status === 'pending'
-                                ? 'status-pending'
-                                : 'status-sold'
-                            }`}
-                          >
-                            {item.status === 'active' ? '노출중' : item.status === 'pending' ? '승인대기' : '판매완료'}
-                          </div>
-                          <div className="small-actions" style={{ marginTop: 10 }}>
-                            <button onClick={() => updateMyListingStatus(item.id, 'sold')}>판매완료</button>
-                            <button onClick={() => updateMyListingStatus(item.id, 'active')}>노출중</button>
-                          </div>
+                        <div className="small-actions" style={{ marginTop: 10 }}>
+                          <button onClick={() => updateMyListingStatus(item.id, 'sold')}>판매완료</button>
+                          <button onClick={() => updateMyListingStatus(item.id, 'active')}>노출중</button>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="glass-card">등록된 매물이 없습니다.</div>
-                  )}
+                    </div>
+                  )) : <div className="glass-card">등록된 매물이 없습니다.</div>}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'admin' && isAdmin && (
+          <section className="section">
+            <div className="container">
+              <SectionTitle eyebrow="Admin Mode" title="관리자 승인 관리" subtitle="승인대기 매물만 확인하고 승인 또는 반려할 수 있습니다." />
+              <div className="dark-card">
+                <div className="list-stack">
+                  {pendingListings.length ? pendingListings.map((item) => (
+                    <div key={item.id} className="list-item">
+                      <div>
+                        <div style={{ fontSize: 20, fontWeight: 900 }}>{item.title}</div>
+                        <div className="list-meta">{item.sellerName} · {item.brand} · {item.ton} · {item.year} · {item.price}만원</div>
+                        <div className="list-meta">{item.description || '설명 없음'}</div>
+                      </div>
+                      <div className="small-actions">
+                        <button onClick={() => approveListing(item.id)}>승인</button>
+                        <button onClick={() => rejectListing(item.id)}>반려</button>
+                      </div>
+                    </div>
+                  )) : <div className="glass-card">현재 승인대기 매물이 없습니다.</div>}
                 </div>
               </div>
             </div>
@@ -721,7 +652,6 @@ export default function App() {
           <section className="section">
             <div className="container">
               <SectionTitle eyebrow="Business Landing" title="업체 모집 랜딩페이지" subtitle="판매업체 유입을 위한 소개, 광고상품 안내, 등록 유도 섹션입니다." />
-
               <div className="three-col">
                 {[
                   ['무료 등록', '업체 회원가입 후 기본 매물을 등록하고 문의를 받을 수 있습니다.'],
@@ -753,9 +683,7 @@ export default function App() {
                 <div className="spec-box"><span>지역</span><strong>{selectedListing.location}</strong></div>
                 <div className="spec-box"><span>판매가</span><strong style={{ color: '#f87171' }}>{selectedListing.price}만원</strong></div>
               </div>
-              <div className="glass-card" style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.8 }}>
-                {selectedListing.description || '등록된 설명이 없습니다.'}
-              </div>
+              <div className="glass-card" style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.8 }}>{selectedListing.description || '등록된 설명이 없습니다.'}</div>
             </div>
           )}
         </Modal>
