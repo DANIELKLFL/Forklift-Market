@@ -1,103 +1,767 @@
-import { useEffect, useState } from "react";
-import { auth, db } from "./firebase";
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  createUserWithEmailAndPassword
-} from "firebase/auth";
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
 import {
-  collection,
   addDoc,
-  onSnapshot
-} from "firebase/firestore";
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
+import { auth, db } from './firebase';
+
+const initialForm = {
+  title: '',
+  brand: '',
+  ton: '',
+  year: '',
+  mast: '',
+  hours: '',
+  battery: '',
+  price: '',
+  location: '',
+  description: '',
+};
+
+function SectionTitle({ eyebrow, title, subtitle }) {
+  return (
+    <div className="section-title-wrap">
+      <div className="section-eyebrow">{eyebrow}</div>
+      <h2 className="section-title">{title}</h2>
+      {subtitle ? <p className="section-subtitle">{subtitle}</p> : null}
+    </div>
+  );
+}
+
+function StatCard({ label, value }) {
+  return (
+    <div className="stat-card">
+      <div className="stat-value">{value}</div>
+      <div className="stat-label">{label}</div>
+    </div>
+  );
+}
+
+function ListingCard({ item, onSelect }) {
+  return (
+    <div className="listing-card">
+      <div className="listing-image">대표 이미지</div>
+      <div className="listing-body">
+        <div className="listing-topline">
+          <span className="badge">
+            {item.featured ? '추천매물' : item.status === 'active' ? '일반매물' : item.status === 'pending' ? '승인대기' : '판매완료'}
+          </span>
+          <span className="seller-name">{item.sellerName || '업체명 없음'}</span>
+        </div>
+        <h3 className="listing-title">{item.title}</h3>
+        <div className="listing-spec-grid">
+          <div className="spec-box">
+            <span>연식</span>
+            <strong>{item.year || '-'}</strong>
+          </div>
+          <div className="spec-box">
+            <span>마스트</span>
+            <strong>{item.mast || '-'}</strong>
+          </div>
+          <div className="spec-box">
+            <span>가동시간</span>
+            <strong>{item.hours || '-'}</strong>
+          </div>
+          <div className="spec-box">
+            <span>배터리</span>
+            <strong>{item.battery || '-'}</strong>
+          </div>
+        </div>
+        <div className="listing-footer">
+          <div>
+            <div className="price-label">판매가</div>
+            <div className="price-value">{item.price ? `${item.price}만원` : '-'}</div>
+          </div>
+          <button className="btn btn-light" onClick={() => onSelect(item)}>
+            상세보기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Modal({ open, onClose, children }) {
+  if (!open) return null;
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card">
+        <div className="modal-actions">
+          <button className="btn btn-outline" onClick={onClose}>
+            닫기
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [title, setTitle] = useState("");
-  const [listingsCount, setListingsCount] = useState(0);
-  const [companiesCount, setCompaniesCount] = useState(0);
+  const [companies, setCompanies] = useState([]);
+  const [listings, setListings] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentCompany, setCurrentCompany] = useState(null);
+  const [activeTab, setActiveTab] = useState('home');
+  const [selectedListing, setSelectedListing] = useState(null);
+  const [keyword, setKeyword] = useState('');
+  const [brandFilter, setBrandFilter] = useState('');
+  const [tonFilter, setTonFilter] = useState('');
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [signupForm, setSignupForm] = useState({
+    companyName: '',
+    name: '',
+    phone: '',
+    email: '',
+    password: '',
+    region: '',
+    businessType: '',
+  });
+  const [listingForm, setListingForm] = useState(initialForm);
+  const [notice, setNotice] = useState('');
 
-  // 🔥 실시간 데이터
   useEffect(() => {
-    const unsub1 = onSnapshot(collection(db, "listings"), (snap) => {
-      setListingsCount(snap.size);
+    document.title = 'FORKLIFT MARKET | 중고지게차 매물 플랫폼';
+  }, []);
+
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user || null);
+      if (!user) setCurrentCompany(null);
     });
 
-    const unsub2 = onSnapshot(collection(db, "companies"), (snap) => {
-      setCompaniesCount(snap.size);
+    return () => unsubAuth();
+  }, []);
+
+  useEffect(() => {
+    const companiesQuery = query(collection(db, 'companies'), orderBy('createdAt', 'desc'));
+    const unsubCompanies = onSnapshot(companiesQuery, (snapshot) => {
+      const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setCompanies(rows);
+    });
+
+    const listingsQuery = query(collection(db, 'listings'), orderBy('createdAt', 'desc'));
+    const unsubListings = onSnapshot(listingsQuery, (snapshot) => {
+      const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setListings(rows);
     });
 
     return () => {
-      unsub1();
-      unsub2();
+      unsubCompanies();
+      unsubListings();
     };
   }, []);
 
-  // 🔥 회원가입
-  const handleSignup = async () => {
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
+  useEffect(() => {
+    if (!currentUser) return;
+    const found = companies.find((item) => item.authUserId === currentUser.uid);
+    setCurrentCompany(found || null);
+  }, [companies, currentUser]);
 
-      await addDoc(collection(db, "companies"), {
-        email,
-        createdAt: Date.now()
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(''), 2500);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  const activeListings = useMemo(() => {
+    return listings.filter((item) => item.status === 'active' || item.status === 'pending');
+  }, [listings]);
+
+  const filteredListings = useMemo(() => {
+    return activeListings.filter((item) => {
+      const matchKeyword = keyword
+        ? [item.title, item.brand, item.ton, item.location, item.sellerName, item.description]
+            .join(' ')
+            .toLowerCase()
+            .includes(keyword.toLowerCase())
+        : true;
+
+      const matchBrand = brandFilter ? item.brand === brandFilter : true;
+      const matchTon = tonFilter ? item.ton === tonFilter : true;
+
+      return matchKeyword && matchBrand && matchTon;
+    });
+  }, [activeListings, keyword, brandFilter, tonFilter]);
+
+  const featuredListings = useMemo(() => {
+    return activeListings.filter((item) => item.featured).slice(0, 3);
+  }, [activeListings]);
+
+  const myListings = useMemo(() => {
+    return currentCompany ? listings.filter((item) => item.companyId === currentCompany.id) : [];
+  }, [listings, currentCompany]);
+
+  const dashboardStats = useMemo(() => {
+    return {
+      totalListings: myListings.length,
+      activeCount: myListings.filter((item) => item.status === 'active').length,
+      pendingCount: myListings.filter((item) => item.status === 'pending').length,
+      soldCount: myListings.filter((item) => item.status === 'sold').length,
+    };
+  }, [myListings]);
+
+  const handleSignup = async (e) => {
+    e.preventDefault();
+
+    if (!signupForm.companyName || !signupForm.name || !signupForm.phone || !signupForm.email || !signupForm.password) {
+      setNotice('필수 항목을 입력해주세요.');
+      return;
+    }
+
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, signupForm.email, signupForm.password);
+
+      await setDoc(doc(db, 'companies', cred.user.uid), {
+        authUserId: cred.user.uid,
+        companyName: signupForm.companyName,
+        name: signupForm.name,
+        phone: signupForm.phone,
+        email: signupForm.email,
+        region: signupForm.region,
+        businessType: signupForm.businessType,
+        createdAt: serverTimestamp(),
       });
 
-      alert("회원가입 완료");
-    } catch (e) {
-      alert("에러: " + e.message);
+      setSignupForm({
+        companyName: '',
+        name: '',
+        phone: '',
+        email: '',
+        password: '',
+        region: '',
+        businessType: '',
+      });
+      setNotice('업체 회원가입이 완료되었습니다.');
+      setActiveTab('dashboard');
+    } catch (error) {
+      setNotice(error.message || '회원가입 중 오류가 발생했습니다.');
     }
   };
 
-  // 🔥 매물 등록
-  const handleAddListing = async () => {
+  const handleLogin = async (e) => {
+    e.preventDefault();
+
     try {
-      await addDoc(collection(db, "listings"), {
-        title,
-        createdAt: Date.now()
+      await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
+      setLoginForm({ email: '', password: '' });
+      setNotice('로그인되었습니다.');
+      setActiveTab('dashboard');
+    } catch (error) {
+      setNotice(error.message || '로그인 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setNotice('로그아웃되었습니다.');
+    setActiveTab('home');
+  };
+
+  const handleCreateListing = async (e) => {
+    e.preventDefault();
+
+    if (!currentUser || !currentCompany) {
+      setNotice('로그인한 업체 회원만 등록할 수 있습니다.');
+      setActiveTab('seller');
+      return;
+    }
+
+    if (!listingForm.title || !listingForm.brand || !listingForm.ton || !listingForm.year || !listingForm.price) {
+      setNotice('필수 항목을 입력해주세요.');
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, 'listings'), {
+        companyId: currentCompany.id,
+        authUserId: currentUser.uid,
+        sellerName: currentCompany.companyName,
+        ...listingForm,
+        status: 'pending',
+        featured: false,
+        createdAt: serverTimestamp(),
       });
 
-      setTitle("");
-    } catch (e) {
-      alert("에러: " + e.message);
+      setListingForm(initialForm);
+      setNotice('매물 등록이 완료되었습니다. 실시간으로 반영됩니다.');
+      setActiveTab('dashboard');
+    } catch (error) {
+      setNotice(error.message || '매물 등록 중 오류가 발생했습니다.');
+    }
+  };
+
+  const updateMyListingStatus = async (id, nextStatus) => {
+    try {
+      await updateDoc(doc(db, 'listings', id), { status: nextStatus });
+      setNotice('매물 상태가 변경되었습니다.');
+    } catch (error) {
+      setNotice(error.message || '상태 변경 중 오류가 발생했습니다.');
     }
   };
 
   return (
-    <div style={{ padding: 30 }}>
-      <h1>🚜 FORKLIFT MARKET</h1>
+    <>
+      <style>{`
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, sans-serif; background: #0a0a0a; color: #fff; }
+        button, input, select, textarea { font: inherit; }
+        .app-shell { min-height: 100vh; background: linear-gradient(180deg, #080808 0%, #101010 100%); }
+        .container { width: min(1200px, calc(100% - 32px)); margin: 0 auto; }
+        .header { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px); background: rgba(0,0,0,0.72); border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .header-inner { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 0; flex-wrap: wrap; }
+        .logo { font-size: 30px; font-weight: 900; color: #ef4444; letter-spacing: -0.03em; }
+        .logo-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+        .nav { display: flex; gap: 10px; flex-wrap: wrap; }
+        .nav button { padding: 11px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #e5e7eb; cursor: pointer; }
+        .nav button.active { background: #dc2626; border-color: #dc2626; color: white; }
+        .notice-wrap { position: sticky; top: 84px; z-index: 10; }
+        .notice { margin-top: 14px; padding: 14px 16px; border-radius: 16px; background: rgba(220,38,38,0.12); border: 1px solid rgba(220,38,38,0.25); color: #fee2e2; }
+        .hero { padding: 58px 0 34px; background: radial-gradient(circle at top right, rgba(220,38,38,0.24), transparent 18%), radial-gradient(circle at left, rgba(255,255,255,0.06), transparent 18%); }
+        .hero-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 28px; align-items: stretch; }
+        .pill { display: inline-block; padding: 9px 14px; border-radius: 999px; background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.28); color: #fca5a5; font-size: 13px; font-weight: 700; }
+        .hero h1 { margin: 18px 0 0; font-size: clamp(38px, 6vw, 68px); line-height: 1.04; letter-spacing: -0.04em; }
+        .hero h1 span { display: block; color: #ef4444; }
+        .hero p { margin: 20px 0 0; max-width: 720px; color: #d1d5db; line-height: 1.8; font-size: 16px; }
+        .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+        .btn { border: none; cursor: pointer; border-radius: 16px; padding: 14px 20px; font-weight: 800; }
+        .btn-primary { background: #dc2626; color: #fff; box-shadow: 0 10px 22px rgba(127,29,29,0.35); }
+        .btn-secondary { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.14); }
+        .btn-light { background: #f5f5f5; color: #111; }
+        .btn-outline { background: transparent; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.14); }
+        .stats-grid { margin-top: 28px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+        .stat-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 18px; }
+        .stat-value { font-size: 30px; font-weight: 900; }
+        .stat-label { font-size: 13px; color: #9ca3af; margin-top: 6px; }
+        .search-panel { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 28px; padding: 18px; box-shadow: 0 16px 36px rgba(0,0,0,0.34); }
+        .search-panel-inner { background: #111; border-radius: 24px; padding: 22px; }
+        .panel-title { font-size: 22px; font-weight: 900; margin: 0 0 18px; }
+        .grid-gap { display: grid; gap: 12px; }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .field, .select, .textarea { width: 100%; padding: 14px 15px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); background: #060606; color: #fff; outline: none; }
+        .textarea { min-height: 120px; resize: vertical; }
+        .category-row { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+        .chip { padding: 10px 12px; border-radius: 999px; font-size: 12px; color: #d1d5db; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); }
+        .section { padding: 36px 0; }
+        .section-title-wrap { margin-bottom: 22px; }
+        .section-eyebrow { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: #f87171; font-weight: 800; }
+        .section-title { margin: 10px 0 0; font-size: 40px; line-height: 1.1; letter-spacing: -0.03em; }
+        .section-subtitle { margin: 12px 0 0; color: #9ca3af; line-height: 1.7; max-width: 760px; }
+        .listing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .listing-card { overflow: hidden; border-radius: 28px; background: #111; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 18px 40px rgba(0,0,0,0.25); }
+        .listing-image { height: 210px; display: flex; align-items: center; justify-content: center; color: #6b7280; background: linear-gradient(135deg, #222, #080808); font-weight: 700; }
+        .listing-body { padding: 20px; }
+        .listing-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .badge { display: inline-flex; padding: 7px 11px; border-radius: 999px; background: rgba(239,68,68,0.14); color: #fca5a5; font-size: 12px; font-weight: 900; }
+        .seller-name { color: #9ca3af; font-size: 12px; }
+        .listing-title { font-size: 24px; line-height: 1.25; margin: 14px 0 0; }
+        .listing-spec-grid { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .spec-box { padding: 14px; border-radius: 18px; background: rgba(255,255,255,0.05); }
+        .spec-box span { display: block; color: #9ca3af; font-size: 12px; margin-bottom: 6px; }
+        .spec-box strong { font-size: 14px; }
+        .listing-footer { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .price-label { color: #9ca3af; font-size: 12px; }
+        .price-value { color: #ef4444; font-size: 28px; font-weight: 900; margin-top: 4px; }
+        .feature-grid, .dashboard-grid, .three-col { display: grid; gap: 18px; }
+        .feature-grid { grid-template-columns: 1.05fr 0.95fr; }
+        .dashboard-grid { grid-template-columns: repeat(4, 1fr); }
+        .three-col { grid-template-columns: repeat(3, 1fr); }
+        .glass-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 28px; padding: 22px; }
+        .dark-card { background: #111; border: 1px solid rgba(255,255,255,0.08); border-radius: 28px; padding: 22px; }
+        .flow-title { font-size: 22px; font-weight: 900; margin: 0; }
+        .list-stack { display: grid; gap: 12px; }
+        .list-item { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 16px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04); }
+        .list-meta { color: #9ca3af; font-size: 14px; margin-top: 6px; }
+        .status-badge { display: inline-flex; padding: 9px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; }
+        .status-active { background: rgba(34,197,94,0.16); color: #86efac; }
+        .status-pending { background: rgba(234,179,8,0.16); color: #fde68a; }
+        .status-sold { background: rgba(107,114,128,0.22); color: #d1d5db; }
+        .small-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .small-actions button { padding: 10px 12px; border-radius: 12px; background: transparent; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
+        .upload-box { border-radius: 18px; padding: 28px 16px; border: 1px dashed rgba(255,255,255,0.18); text-align: center; color: #9ca3af; background: rgba(255,255,255,0.03); }
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.74); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+        .modal-card { width: min(860px, 100%); max-height: 90vh; overflow: auto; background: #0b0b0b; border: 1px solid rgba(255,255,255,0.1); border-radius: 28px; padding: 22px; }
+        .modal-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+        .footer { border-top: 1px solid rgba(255,255,255,0.08); padding: 28px 0; text-align: center; color: #9ca3af; font-size: 13px; }
+        @media (max-width: 1024px) {
+          .hero-grid, .feature-grid, .listing-grid, .dashboard-grid, .three-col { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 720px) {
+          .hero-grid, .feature-grid, .listing-grid, .dashboard-grid, .three-col, .two-col { grid-template-columns: 1fr; }
+          .listing-footer, .list-item { flex-direction: column; align-items: flex-start; }
+          .section-title { font-size: 30px; }
+          .logo { font-size: 24px; }
+        }
+      `}</style>
 
-      <h3>📊 실시간 데이터</h3>
-      <p>등록 매물: {listingsCount}개</p>
-      <p>참여 업체: {companiesCount}개</p>
+      <div className="app-shell">
+        <header className="header">
+          <div className="container header-inner">
+            <div>
+              <div className="logo">FORKLIFT MARKET</div>
+              <div className="logo-sub">중고지게차 매물 플랫폼</div>
+            </div>
 
-      <hr />
+            <nav className="nav">
+              {[
+                ['home', '홈'],
+                ['market', '매물보기'],
+                ['seller', '업체가입'],
+                ['register', '매물등록'],
+                ['landing', '광고안내'],
+                ...(currentCompany ? [['dashboard', '대시보드']] : []),
+              ].map(([key, label]) => (
+                <button key={key} className={activeTab === key ? 'active' : ''} onClick={() => setActiveTab(key)}>
+                  {label}
+                </button>
+              ))}
+              {currentUser ? <button onClick={handleLogout}>로그아웃</button> : null}
+            </nav>
+          </div>
+        </header>
 
-      <h3>🏢 업체 회원가입</h3>
-      <input
-        placeholder="이메일"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      <br />
-      <input
-        placeholder="비밀번호"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <br />
-      <button onClick={handleSignup}>회원가입</button>
+        {notice ? (
+          <div className="container notice-wrap">
+            <div className="notice">{notice}</div>
+          </div>
+        ) : null}
 
-      <hr />
+        {activeTab === 'home' && (
+          <>
+            <section className="hero">
+              <div className="container hero-grid">
+                <div>
+                  <div className="pill">업체 회원가입 · 매물 등록 · 문의 연결</div>
+                  <h1>
+                    지게차 매물 찾기부터
+                    <span>판매 · 렌탈 · 상담까지 한 번에</span>
+                  </h1>
+                  <p>
+                    여러 판매업체가 직접 가입하고 매물을 등록할 수 있는 중고지게차 매물 플랫폼입니다.
+                    실시간 매물 반영, 실시간 참여업체 수, 빠른 문의 연결까지 한곳에서 운영할 수 있습니다.
+                  </p>
+                  <div className="hero-actions">
+                    <button className="btn btn-primary" onClick={() => setActiveTab('market')}>
+                      추천 매물 보기
+                    </button>
+                    <button className="btn btn-secondary" onClick={() => setActiveTab('seller')}>
+                      업체 등록하기
+                    </button>
+                  </div>
 
-      <h3>📦 매물 등록</h3>
-      <input
-        placeholder="지게차 이름"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-      />
-      <br />
-      <button onClick={handleAddListing}>매물 등록</button>
-    </div>
+                  <div className="stats-grid">
+                    <StatCard label="등록 매물" value={`${listings.length}+`} />
+                    <StatCard label="참여 업체" value={`${companies.length}+`} />
+                    <StatCard label="렌탈 문의" value="실시간" />
+                    <StatCard label="A/S 연결" value="빠른 안내" />
+                  </div>
+                </div>
+
+                <div className="search-panel">
+                  <div className="search-panel-inner">
+                    <div className="panel-title">매물 검색</div>
+                    <div className="grid-gap">
+                      <input
+                        className="field"
+                        value={keyword}
+                        onChange={(e) => setKeyword(e.target.value)}
+                        placeholder="브랜드 / 톤수 / 연식 검색"
+                      />
+                      <div className="two-col">
+                        <select className="select" value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
+                          <option value="">브랜드 전체</option>
+                          <option value="현대">현대</option>
+                          <option value="두산">두산</option>
+                          <option value="클라크">클라크</option>
+                          <option value="도요타">도요타</option>
+                          <option value="니찌유">니찌유</option>
+                          <option value="스미토모">스미토모</option>
+                          <option value="기타브랜드">기타브랜드</option>
+                        </select>
+                        <select className="select" value={tonFilter} onChange={(e) => setTonFilter(e.target.value)}>
+                          <option value="">톤수 전체</option>
+                          <option value="1.5톤">1.5톤</option>
+                          <option value="2톤">2톤</option>
+                          <option value="2.5톤">2.5톤</option>
+                          <option value="3톤이상">3톤이상</option>
+                          <option value="4.5톤이상">4.5톤이상</option>
+                        </select>
+                      </div>
+                      <button className="btn btn-primary" onClick={() => setActiveTab('market')}>
+                        매물 검색하기
+                      </button>
+                    </div>
+
+                    <div className="category-row">
+                      {['현대', '두산', '클라크', '도요타', '니찌유', '스미토모', '기타브랜드'].map((category) => (
+                        <span key={category} className="chip">
+                          {category}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="section">
+              <div className="container">
+                <SectionTitle eyebrow="Featured Listings" title="추천 매물" subtitle="실시간 등록된 매물 중 눈에 잘 띄는 대표 장비를 먼저 보여줍니다." />
+                <div className="listing-grid">
+                  {(featuredListings.length ? featuredListings : activeListings.slice(0, 3)).map((item) => (
+                    <ListingCard key={item.id} item={item} onSelect={setSelectedListing} />
+                  ))}
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        {activeTab === 'market' && (
+          <section className="section">
+            <div className="container">
+              <SectionTitle eyebrow="Marketplace" title="전체 매물" subtitle="브랜드, 톤수, 키워드로 원하는 장비를 빠르게 찾을 수 있습니다." />
+
+              <div className="glass-card" style={{ marginBottom: 20 }}>
+                <div className="grid-gap" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                  <input
+                    className="field"
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                    placeholder="브랜드 / 연식 / 지역 검색"
+                  />
+                  <select className="select" value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
+                    <option value="">브랜드 전체</option>
+                    <option value="현대">현대</option>
+                    <option value="두산">두산</option>
+                    <option value="클라크">클라크</option>
+                    <option value="도요타">도요타</option>
+                    <option value="니찌유">니찌유</option>
+                    <option value="스미토모">스미토모</option>
+                    <option value="기타브랜드">기타브랜드</option>
+                  </select>
+                  <select className="select" value={tonFilter} onChange={(e) => setTonFilter(e.target.value)}>
+                    <option value="">톤수 전체</option>
+                    <option value="1.5톤">1.5톤</option>
+                    <option value="2톤">2톤</option>
+                    <option value="2.5톤">2.5톤</option>
+                    <option value="3톤이상">3톤이상</option>
+                    <option value="4.5톤이상">4.5톤이상</option>
+                  </select>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setKeyword('');
+                      setBrandFilter('');
+                      setTonFilter('');
+                    }}
+                  >
+                    필터 초기화
+                  </button>
+                </div>
+              </div>
+
+              <div className="listing-grid">
+                {filteredListings.length ? (
+                  filteredListings.map((item) => <ListingCard key={item.id} item={item} onSelect={setSelectedListing} />)
+                ) : (
+                  <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'seller' && (
+          <section className="section">
+            <div className="container">
+              <SectionTitle eyebrow="Seller Center" title="업체 회원가입 · 로그인" subtitle="업체 회원만 매물을 등록할 수 있습니다." />
+
+              <div className="feature-grid">
+                <div className="dark-card">
+                  <h3 className="flow-title">회원가입</h3>
+                  <form className="grid-gap" style={{ marginTop: 18 }} onSubmit={handleSignup}>
+                    <input className="field" value={signupForm.companyName} onChange={(e) => setSignupForm({ ...signupForm, companyName: e.target.value })} placeholder="업체명" />
+                    <input className="field" value={signupForm.name} onChange={(e) => setSignupForm({ ...signupForm, name: e.target.value })} placeholder="담당자명" />
+                    <input className="field" value={signupForm.phone} onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })} placeholder="연락처" />
+                    <input className="field" value={signupForm.email} onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })} placeholder="이메일" type="email" />
+                    <input className="field" value={signupForm.password} onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })} placeholder="비밀번호" type="password" />
+                    <div className="two-col">
+                      <input className="field" value={signupForm.region} onChange={(e) => setSignupForm({ ...signupForm, region: e.target.value })} placeholder="지역" />
+                      <input className="field" value={signupForm.businessType} onChange={(e) => setSignupForm({ ...signupForm, businessType: e.target.value })} placeholder="업종 (매매/렌탈/정비)" />
+                    </div>
+                    <button className="btn btn-primary">회원가입</button>
+                  </form>
+                </div>
+
+                <div className="glass-card">
+                  <h3 className="flow-title">로그인</h3>
+                  <form className="grid-gap" style={{ marginTop: 18 }} onSubmit={handleLogin}>
+                    <input className="field" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} placeholder="이메일" type="email" />
+                    <input className="field" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="비밀번호" type="password" />
+                    <button className="btn btn-light">로그인</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'register' && (
+          <section className="section">
+            <div className="container">
+              <SectionTitle eyebrow="Listing Form" title="매물 등록" subtitle="로그인한 업체 회원만 등록할 수 있습니다." />
+
+              <div className="feature-grid">
+                <form className="dark-card grid-gap" onSubmit={handleCreateListing}>
+                  <input className="field" value={listingForm.title} onChange={(e) => setListingForm({ ...listingForm, title: e.target.value })} placeholder="모델명 입력" />
+                  <div className="two-col">
+                    <input className="field" value={listingForm.brand} onChange={(e) => setListingForm({ ...listingForm, brand: e.target.value })} placeholder="브랜드" />
+                    <input className="field" value={listingForm.ton} onChange={(e) => setListingForm({ ...listingForm, ton: e.target.value })} placeholder="톤수" />
+                  </div>
+                  <div className="two-col">
+                    <input className="field" value={listingForm.year} onChange={(e) => setListingForm({ ...listingForm, year: e.target.value })} placeholder="연식" />
+                    <input className="field" value={listingForm.mast} onChange={(e) => setListingForm({ ...listingForm, mast: e.target.value })} placeholder="마스트 높이" />
+                  </div>
+                  <div className="two-col">
+                    <input className="field" value={listingForm.hours} onChange={(e) => setListingForm({ ...listingForm, hours: e.target.value })} placeholder="가동시간" />
+                    <input className="field" value={listingForm.location} onChange={(e) => setListingForm({ ...listingForm, location: e.target.value })} placeholder="지역" />
+                  </div>
+                  <input className="field" value={listingForm.battery} onChange={(e) => setListingForm({ ...listingForm, battery: e.target.value })} placeholder="배터리 상태 / 주요 옵션" />
+                  <input className="field" value={listingForm.price} onChange={(e) => setListingForm({ ...listingForm, price: e.target.value })} placeholder="판매가 입력 (만원 단위)" />
+                  <textarea className="textarea" value={listingForm.description} onChange={(e) => setListingForm({ ...listingForm, description: e.target.value })} placeholder="매물 설명" />
+                  <div className="upload-box">이미지 업로드는 다음 단계에서 붙입니다.</div>
+                  <button className="btn btn-primary">매물 등록 신청</button>
+                </form>
+
+                <div className="glass-card">
+                  <h3 className="flow-title">등록 안내</h3>
+                  <div style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.9 }}>
+                    <p>로그인한 업체 회원만 매물을 등록할 수 있습니다.</p>
+                    <p>등록된 매물은 Firestore에 저장되고, 다른 사용자 화면에도 실시간으로 반영됩니다.</p>
+                    <p>지금 단계에서는 테스트 모드로 연결하고, 오픈 전에 보안 규칙을 바꾸면 됩니다.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'dashboard' && currentCompany && (
+          <section className="section">
+            <div className="container">
+              <SectionTitle eyebrow="Seller Dashboard" title={`${currentCompany.companyName} 판매업체 관리`} subtitle="내 매물 등록 현황과 상태를 한눈에 확인할 수 있습니다." />
+
+              <div className="dashboard-grid">
+                <StatCard label="전체 매물" value={dashboardStats.totalListings} />
+                <StatCard label="노출중" value={dashboardStats.activeCount} />
+                <StatCard label="승인대기" value={dashboardStats.pendingCount} />
+                <StatCard label="판매완료" value={dashboardStats.soldCount} />
+              </div>
+
+              <div className="dark-card" style={{ marginTop: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 18 }}>
+                  <h3 className="flow-title" style={{ margin: 0 }}>내 매물 관리</h3>
+                  <button className="btn btn-primary" onClick={() => setActiveTab('register')}>
+                    새 매물 등록
+                  </button>
+                </div>
+
+                <div className="list-stack">
+                  {myListings.length ? (
+                    myListings.map((item) => (
+                      <div key={item.id} className="list-item">
+                        <div>
+                          <div style={{ fontSize: 20, fontWeight: 900 }}>{item.title}</div>
+                          <div className="list-meta">{item.year}년식 · {item.ton} · {item.mast} · {item.price}만원</div>
+                        </div>
+                        <div>
+                          <div
+                            className={`status-badge ${
+                              item.status === 'active'
+                                ? 'status-active'
+                                : item.status === 'pending'
+                                ? 'status-pending'
+                                : 'status-sold'
+                            }`}
+                          >
+                            {item.status === 'active' ? '노출중' : item.status === 'pending' ? '승인대기' : '판매완료'}
+                          </div>
+                          <div className="small-actions" style={{ marginTop: 10 }}>
+                            <button onClick={() => updateMyListingStatus(item.id, 'sold')}>판매완료</button>
+                            <button onClick={() => updateMyListingStatus(item.id, 'active')}>노출중</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="glass-card">등록된 매물이 없습니다.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'landing' && (
+          <section className="section">
+            <div className="container">
+              <SectionTitle eyebrow="Business Landing" title="업체 모집 랜딩페이지" subtitle="판매업체 유입을 위한 소개, 광고상품 안내, 등록 유도 섹션입니다." />
+
+              <div className="three-col">
+                {[
+                  ['무료 등록', '업체 회원가입 후 기본 매물을 등록하고 문의를 받을 수 있습니다.'],
+                  ['상단 노출', '대표 매물과 업체를 메인에 노출해 더 많은 문의를 받을 수 있습니다.'],
+                  ['브랜드 홍보', '업체 소개, 지역, 주력 장비를 함께 보여줘 신뢰도를 높일 수 있습니다.'],
+                ].map(([title, desc]) => (
+                  <div key={title} className="glass-card">
+                    <h3 className="flow-title">{title}</h3>
+                    <p className="list-meta" style={{ marginTop: 10, lineHeight: 1.8 }}>{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        <Modal open={!!selectedListing} onClose={() => setSelectedListing(null)}>
+          {selectedListing && (
+            <div>
+              <div className="badge">{selectedListing.sellerName}</div>
+              <h3 className="section-title" style={{ marginTop: 14 }}>{selectedListing.title}</h3>
+              <div className="listing-spec-grid" style={{ marginTop: 18 }}>
+                <div className="spec-box"><span>브랜드</span><strong>{selectedListing.brand}</strong></div>
+                <div className="spec-box"><span>톤수</span><strong>{selectedListing.ton}</strong></div>
+                <div className="spec-box"><span>연식</span><strong>{selectedListing.year}</strong></div>
+                <div className="spec-box"><span>마스트</span><strong>{selectedListing.mast}</strong></div>
+                <div className="spec-box"><span>가동시간</span><strong>{selectedListing.hours}</strong></div>
+                <div className="spec-box"><span>배터리</span><strong>{selectedListing.battery}</strong></div>
+                <div className="spec-box"><span>지역</span><strong>{selectedListing.location}</strong></div>
+                <div className="spec-box"><span>판매가</span><strong style={{ color: '#f87171' }}>{selectedListing.price}만원</strong></div>
+              </div>
+              <div className="glass-card" style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.8 }}>
+                {selectedListing.description || '등록된 설명이 없습니다.'}
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        <footer className="footer">© 2026 FORKLIFT MARKET. All rights reserved.</footer>
+      </div>
+    </>
   );
 }
