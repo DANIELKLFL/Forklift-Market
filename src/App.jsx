@@ -80,7 +80,20 @@ function ListingCard({ item, isAdmin, onDelete }) {
             <div className="price-label">판매가</div>
             <div className="price-value">{item.price ? `${item.price}만원` : '-'}</div>
           </div>
-          <button className="btn btn-light" onClick={() => navigate(`/listing/${item.id}`)}>상세보기</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+  <button className="btn btn-light" onClick={() => navigate(`/listing/${item.id}`)}>
+    상세보기
+  </button>
+
+  {isAdmin && (
+    <button
+      className="btn btn-primary"
+      onClick={() => onDelete(item.id)}
+    >
+      삭제
+    </button>
+  )}
+</div>
         </div>
       </div>
     </div>
