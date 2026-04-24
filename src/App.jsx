@@ -8,6 +8,7 @@ import {
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -289,6 +290,18 @@ export default function App() {
       setNotice('매물이 반려되었습니다.');
     } catch (error) {
       setNotice(error.message || '반려 중 오류가 발생했습니다.');
+    }
+  };
+
+  const deleteListing = async (id) => {
+    const ok = window.confirm('이 매물을 완전히 삭제할까요? 삭제 후에는 복구할 수 없습니다.');
+    if (!ok) return;
+
+    try {
+      await deleteDoc(doc(db, 'listings', id));
+      setNotice('매물이 삭제되었습니다.');
+    } catch (error) {
+      setNotice(error.message || '삭제 중 오류가 발생했습니다.');
     }
   };
 
@@ -639,6 +652,7 @@ export default function App() {
                       <div className="small-actions">
                         <button onClick={() => approveListing(item.id)}>승인</button>
                         <button onClick={() => rejectListing(item.id)}>반려</button>
+                        <button onClick={() => deleteListing(item.id)}>삭제</button>
                       </div>
                     </div>
                   )) : <div className="glass-card">현재 승인대기 매물이 없습니다.</div>}
