@@ -17,7 +17,8 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { auth, db, storage } from './firebase';
 
 const ADMIN_EMAILS = ['best@example.com'];
 
@@ -56,7 +57,9 @@ function StatCard({ label, value }) {
 function ListingCard({ item, onSelect }) {
   return (
     <div className="listing-card">
-      <div className="listing-image">대표 이미지</div>
+      <div className="listing-image">
+        {item.imageUrls?.[0] ? <img src={item.imageUrls[0]} alt={item.title} /> : '대표 이미지'}
+      </div>
       <div className="listing-body">
         <div className="listing-topline">
           <span className="badge">{item.featured ? '추천매물' : '일반매물'}</span>
@@ -117,6 +120,7 @@ export default function App() {
   });
   const [listingForm, setListingForm] = useState(initialForm);
   const [notice, setNotice] = useState('');
+  const [imageFiles, setImageFiles] = useState([]);
 
   const isAdmin = !!(currentUser && (ADMIN_EMAILS.includes(currentUser.email || '') || currentCompany?.role === 'admin'));
 
@@ -249,16 +253,27 @@ export default function App() {
     }
 
     try {
+      const imageUrls = await Promise.all(
+        imageFiles.slice(0, 5).map(async (file) => {
+          const imageRef = ref(storage, `listings/${currentUser.uid}/${Date.now()}-${file.name}`);
+          await uploadBytes(imageRef, file);
+          return getDownloadURL(imageRef);
+        })
+      );
+
       await addDoc(collection(db, 'listings'), {
         companyId: currentCompany.id,
         authUserId: currentUser.uid,
         sellerName: currentCompany.companyName,
+        sellerPhone: currentCompany.phone || '',
         ...listingForm,
+        imageUrls,
         status: 'pending',
         featured: false,
         createdAt: serverTimestamp(),
       });
       setListingForm(initialForm);
+      setImageFiles([]);
       setNotice('매물 등록이 완료되었습니다. 관리자 승인 후 공개됩니다.');
       setActiveTab('dashboard');
     } catch (error) {
@@ -354,7 +369,13 @@ export default function App() {
         .section-subtitle { margin: 12px 0 0; color: #9ca3af; line-height: 1.7; max-width: 760px; }
         .listing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
         .listing-card { overflow: hidden; border-radius: 28px; background: #111; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 18px 40px rgba(0,0,0,0.25); }
-        .listing-image { height: 210px; display: flex; align-items: center; justify-content: center; color: #6b7280; background: linear-gradient(135deg, #222, #080808); font-weight: 700; }
+        .listing-image { height: 210px; display: flex; align-items: center; justify-content: center; color: #6b7280; background: linear-gradient(135deg, #222, #080808); font-weight: 700; overflow: hidden; }
+        .listing-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .image-preview-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+        .image-preview { height: 86px; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); }
+        .image-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .detail-image-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
+        .detail-image-grid img { width: 100%; height: 150px; object-fit: cover; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); }
         .listing-body { padding: 20px; }
         .listing-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         .badge { display: inline-flex; padding: 7px 11px; border-radius: 999px; background: rgba(239,68,68,0.14); color: #fca5a5; font-size: 12px; font-weight: 900; }
@@ -581,7 +602,23 @@ export default function App() {
                   <input className="field" value={listingForm.battery} onChange={(e) => setListingForm({ ...listingForm, battery: e.target.value })} placeholder="배터리 상태 / 주요 옵션" />
                   <input className="field" value={listingForm.price} onChange={(e) => setListingForm({ ...listingForm, price: e.target.value })} placeholder="판매가 입력 (만원 단위)" />
                   <textarea className="textarea" value={listingForm.description} onChange={(e) => setListingForm({ ...listingForm, description: e.target.value })} placeholder="매물 설명" />
-                  <div className="upload-box">이미지 업로드는 다음 단계에서 붙입니다.</div>
+                  <input
+                    className="field"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => setImageFiles(Array.from(e.target.files || []).slice(0, 5))}
+                  />
+                  <div className="upload-box">사진은 최대 5장까지 업로드할 수 있습니다.</div>
+                  {imageFiles.length ? (
+                    <div className="image-preview-grid">
+                      {imageFiles.map((file, index) => (
+                        <div className="image-preview" key={`${file.name}-${index}`}>
+                          <img src={URL.createObjectURL(file)} alt={`업로드 미리보기 ${index + 1}`} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <button className="btn btn-primary">매물 등록 신청</button>
                 </form>
                 <div className="glass-card">
@@ -697,7 +734,23 @@ export default function App() {
                 <div className="spec-box"><span>지역</span><strong>{selectedListing.location}</strong></div>
                 <div className="spec-box"><span>판매가</span><strong style={{ color: '#f87171' }}>{selectedListing.price}만원</strong></div>
               </div>
+              {selectedListing.imageUrls?.length ? (
+                <div className="detail-image-grid">
+                  {selectedListing.imageUrls.map((url, index) => (
+                    <img key={url} src={url} alt={`${selectedListing.title} 사진 ${index + 1}`} />
+                  ))}
+                </div>
+              ) : null}
               <div className="glass-card" style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.8 }}>{selectedListing.description || '등록된 설명이 없습니다.'}</div>
+              <div className="cta-actions" style={{ marginTop: 18 }}>
+                {selectedListing.sellerPhone ? (
+                  <a className="btn btn-light" href={`tel:${selectedListing.sellerPhone.replace(/[^0-9+]/g, '')}`} style={{ textDecoration: 'none' }}>
+                    전화번호 {selectedListing.sellerPhone}
+                  </a>
+                ) : (
+                  <span className="chip">등록된 전화번호 없음</span>
+                )}
+              </div>
               {isAdmin ? (
                 <div className="cta-actions" style={{ marginTop: 18 }}>
                   <button className="btn btn-primary" onClick={() => {
