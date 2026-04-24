@@ -111,8 +111,7 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [imageFiles, setImageFiles] = useState([]);
 
-  const isAdmin = !!(currentUser && (ADMIN_EMAILS.includes(currentUser.email || '') || currentCompany?.role === 'admin'));
-
+const isAdmin = currentUser?.email === '네관리자이메일@gmail.com';
   useEffect(() => {
     document.title = 'FORKLIFT MARKET | 중고지게차 매물 플랫폼';
   }, []);
