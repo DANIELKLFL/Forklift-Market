@@ -550,7 +550,7 @@ const isAdmin = currentUser?.email === 'best@example.com';
                 </div>
               </div>
               <div className="listing-grid">
-                {filteredListings.length ? filteredListings.map((item) => <ListingCard key={item.id} item={item} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
+                {filteredListings.length ? filteredListings.map((item) => <ListingCard   key={item.id}   item={item}   isAdmin={isAdmin}   onDelete={deleteListing} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
               </div>
             </div>
           </section>
