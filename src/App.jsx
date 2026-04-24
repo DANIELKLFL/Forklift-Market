@@ -19,6 +19,8 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import ListingDetail from './ListingDetail';
 
 const ADMIN_EMAILS = ['best@example.com'];
 
@@ -55,6 +57,7 @@ function StatCard({ label, value }) {
 }
 
 function ListingCard({ item, onSelect }) {
+  const navigate = useNavigate();
   return (
     <div className="listing-card">
       <div className="listing-image">
@@ -77,7 +80,7 @@ function ListingCard({ item, onSelect }) {
             <div className="price-label">판매가</div>
             <div className="price-value">{item.price ? `${item.price}만원` : '-'}</div>
           </div>
-          <button className="btn btn-light" onClick={() => onSelect(item)}>상세보기</button>
+          <button className="btn btn-light" onClick={() => navigate(`/listing/${item.id}`)}>상세보기</button>
         </div>
       </div>
     </div>
@@ -330,7 +333,9 @@ export default function App() {
   };
 
   return (
-    <>
+    <Routes>
+      <Route path="/" element={
+        <>
       <style>{`
         * { box-sizing: border-box; }
         body { margin: 0; font-family: Arial, sans-serif; background: #0a0a0a; color: #fff; }
@@ -773,6 +778,9 @@ export default function App() {
 
         <footer className="footer">© 2026 FORKLIFT MARKET. All rights reserved.</footer>
       </div>
-    </>
+        </>
+      } />
+      <Route path="/listing/:id" element={<ListingDetail />} />
+    </Routes>
   );
 }
