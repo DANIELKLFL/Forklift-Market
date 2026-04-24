@@ -56,7 +56,7 @@ function StatCard({ label, value }) {
   );
 }
 
-function ListingCard({ item, onSelect }) {
+function ListingCard({ item }) {
   const navigate = useNavigate();
   return (
     <div className="listing-card">
@@ -87,19 +87,6 @@ function ListingCard({ item, onSelect }) {
   );
 }
 
-function Modal({ open, onClose, children }) {
-  if (!open) return null;
-  return (
-    <div className="modal-backdrop">
-      <div className="modal-card">
-        <div className="modal-actions">
-          <button className="btn btn-outline" onClick={onClose}>닫기</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const [companies, setCompanies] = useState([]);
@@ -107,7 +94,6 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentCompany, setCurrentCompany] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
-  const [selectedListing, setSelectedListing] = useState(null);
   const [keyword, setKeyword] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [tonFilter, setTonFilter] = useState('');
@@ -420,9 +406,6 @@ export default function App() {
         .small-actions { display: flex; gap: 8px; flex-wrap: wrap; }
         .small-actions button { padding: 10px 12px; border-radius: 12px; background: transparent; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
         .upload-box { border-radius: 18px; padding: 28px 16px; border: 1px dashed rgba(255,255,255,0.18); text-align: center; color: #9ca3af; background: rgba(255,255,255,0.03); }
-        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.74); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
-        .modal-card { width: min(860px, 100%); max-height: 90vh; overflow: auto; background: #0b0b0b; border: 1px solid rgba(255,255,255,0.1); border-radius: 28px; padding: 22px; }
-        .modal-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
         .footer { border-top: 1px solid rgba(255,255,255,0.08); padding: 28px 0; text-align: center; color: #9ca3af; font-size: 13px; }
         @media (max-width: 1024px) {
           .hero-grid, .feature-grid, .listing-grid, .dashboard-grid, .three-col { grid-template-columns: 1fr 1fr; }
@@ -519,7 +502,7 @@ export default function App() {
               <div className="container">
                 <SectionTitle eyebrow="Featured Listings" title="추천 매물" subtitle="승인 완료된 매물만 사용자에게 노출됩니다." />
                 <div className="listing-grid">
-                  {(featuredListings.length ? featuredListings : visibleListings.slice(0, 3)).map((item) => <ListingCard key={item.id} item={item} onSelect={setSelectedListing} />)}
+                  {(featuredListings.length ? featuredListings : visibleListings.slice(0, 3)).map((item) => <ListingCard key={item.id} item={item} />)}
                 </div>
               </div>
             </section>
@@ -555,7 +538,7 @@ export default function App() {
                 </div>
               </div>
               <div className="listing-grid">
-                {filteredListings.length ? filteredListings.map((item) => <ListingCard key={item.id} item={item} onSelect={setSelectedListing} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
+                {filteredListings.length ? filteredListings.map((item) => <ListingCard key={item.id} item={item} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
               </div>
             </div>
           </section>
@@ -732,49 +715,6 @@ export default function App() {
           </section>
         )}
 
-        <Modal open={!!selectedListing} onClose={() => setSelectedListing(null)}>
-          {selectedListing && (
-            <div>
-              <div className="badge">{selectedListing.sellerName}</div>
-              <h3 className="section-title" style={{ marginTop: 14 }}>{selectedListing.title}</h3>
-              <div className="listing-spec-grid" style={{ marginTop: 18 }}>
-                <div className="spec-box"><span>브랜드</span><strong>{selectedListing.brand}</strong></div>
-                <div className="spec-box"><span>톤수</span><strong>{selectedListing.ton}</strong></div>
-                <div className="spec-box"><span>연식</span><strong>{selectedListing.year}</strong></div>
-                <div className="spec-box"><span>마스트</span><strong>{selectedListing.mast}</strong></div>
-                <div className="spec-box"><span>가동시간</span><strong>{selectedListing.hours}</strong></div>
-                <div className="spec-box"><span>배터리</span><strong>{selectedListing.battery}</strong></div>
-                <div className="spec-box"><span>지역</span><strong>{selectedListing.location}</strong></div>
-                <div className="spec-box"><span>판매가</span><strong style={{ color: '#f87171' }}>{selectedListing.price}만원</strong></div>
-              </div>
-              {selectedListing.imageUrls?.length ? (
-                <div className="detail-image-grid">
-                  {selectedListing.imageUrls.map((url, index) => (
-                    <img key={url} src={url} alt={`${selectedListing.title} 사진 ${index + 1}`} />
-                  ))}
-                </div>
-              ) : null}
-              <div className="glass-card" style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.8 }}>{selectedListing.description || '등록된 설명이 없습니다.'}</div>
-              <div className="cta-actions" style={{ marginTop: 18 }}>
-                {selectedListing.sellerPhone ? (
-                  <a className="btn btn-light" href={`tel:${selectedListing.sellerPhone.replace(/[^0-9+]/g, '')}`} style={{ textDecoration: 'none' }}>
-                    전화번호 {selectedListing.sellerPhone}
-                  </a>
-                ) : (
-                  <span className="chip">등록된 전화번호 없음</span>
-                )}
-                {isAdmin ? (
-                  <button className="btn btn-primary" onClick={() => {
-                    deleteListing(selectedListing.id);
-                    setSelectedListing(null);
-                  }}>
-                    관리자 삭제
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          )}
-        </Modal>
 
         <footer className="footer">© 2026 FORKLIFT MARKET. All rights reserved.</footer>
       </div>
