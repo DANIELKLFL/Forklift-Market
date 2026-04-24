@@ -56,7 +56,7 @@ function StatCard({ label, value }) {
   );
 }
 
-function ListingCard({ item }) {
+function ListingCard({ item, isAdmin, onDelete }) {
   const navigate = useNavigate();
   return (
     <div className="listing-card">
