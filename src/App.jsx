@@ -514,7 +514,7 @@ const isAdmin = currentUser?.email === 'best@example.com';
               <div className="container">
                 <SectionTitle eyebrow="Featured Listings" title="추천 매물" subtitle="승인 완료된 매물만 사용자에게 노출됩니다." />
                 <div className="listing-grid">
-                  {(featuredListings.length ? featuredListings : visibleListings.slice(0, 3)).map((item) => <ListingCard key={item.id} item={item} />)}
+                  {(featuredListings.length ? featuredListings : visibleListings.slice(0, 3)).map((item) => <ListingCard   key={item.id}   item={item}   isAdmin={isAdmin}   onDelete={deleteListing} />)}
                 </div>
               </div>
             </section>
