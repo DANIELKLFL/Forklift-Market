@@ -674,7 +674,7 @@ const isAdmin = currentUser?.email === 'best@example.com';
                         </div>
                       </div>
                     </div>
-                  )) : <div className="glass-card">등록된 매물이 없습니다.</div>}
+                  )) : <div className="glass-card">현재 승인대기 매물이 없습니다.</div>}
                 </div>
               </div>
             </div>
@@ -687,7 +687,7 @@ const isAdmin = currentUser?.email === 'best@example.com';
               <SectionTitle eyebrow="Admin Mode" title="관리자 승인 관리" subtitle="승인대기 매물만 확인하고 승인 또는 반려할 수 있습니다." />
               <div className="dark-card">
                 <div className="list-stack">
-                  {listings.length ? listings.map((item) => (
+                  {pendingListings.length ? pendingListings.map((item) => (
                     <div key={item.id} className="list-item">
                       <div>
                         <div style={{ fontSize: 20, fontWeight: 900 }}>{item.title}</div>
@@ -700,7 +700,7 @@ const isAdmin = currentUser?.email === 'best@example.com';
                         <button onClick={() => deleteListing(item.id)}>삭제</button>
                       </div>
                     </div>
-                  )) : <div className="glass-card">등록된 매물이 없습니다.</div>}
+                  )) : <div className="glass-card">현재 승인대기 매물이 없습니다.</div>}
                 </div>
               </div>
             </div>
