@@ -698,6 +698,16 @@ export default function App() {
                 <div className="spec-box"><span>판매가</span><strong style={{ color: '#f87171' }}>{selectedListing.price}만원</strong></div>
               </div>
               <div className="glass-card" style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.8 }}>{selectedListing.description || '등록된 설명이 없습니다.'}</div>
+              {isAdmin ? (
+                <div className="cta-actions" style={{ marginTop: 18 }}>
+                  <button className="btn btn-primary" onClick={() => {
+                    deleteListing(selectedListing.id);
+                    setSelectedListing(null);
+                  }}>
+                    관리자 삭제
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
         </Modal>
