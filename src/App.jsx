@@ -242,24 +242,31 @@ export default function App() {
 
   const handleCreateListing = async (e) => {
     e.preventDefault();
+
     if (!currentUser || !currentCompany) {
       setNotice('로그인한 업체 회원만 등록할 수 있습니다.');
       setActiveTab('seller');
       return;
     }
+
     if (!listingForm.title || !listingForm.brand || !listingForm.ton || !listingForm.year || !listingForm.price) {
       setNotice('필수 항목을 입력해주세요.');
       return;
     }
 
     try {
-      const imageUrls = await Promise.all(
-        imageFiles.slice(0, 5).map(async (file) => {
-          const imageRef = ref(storage, `listings/${currentUser.uid}/${Date.now()}-${file.name}`);
-          await uploadBytes(imageRef, file);
-          return getDownloadURL(imageRef);
-        })
-      );
+      let imageUrls = [];
+
+      if (imageFiles && imageFiles.length > 0) {
+        imageUrls = await Promise.all(
+          imageFiles.slice(0, 5).map(async (file) => {
+            const safeName = file.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+            const imageRef = ref(storage, `listings/${currentUser.uid}/${Date.now()}-${safeName}`);
+            await uploadBytes(imageRef, file);
+            return getDownloadURL(imageRef);
+          })
+        );
+      }
 
       await addDoc(collection(db, 'listings'), {
         companyId: currentCompany.id,
@@ -272,11 +279,13 @@ export default function App() {
         featured: false,
         createdAt: serverTimestamp(),
       });
+
       setListingForm(initialForm);
       setImageFiles([]);
       setNotice('매물 등록이 완료되었습니다. 관리자 승인 후 공개됩니다.');
       setActiveTab('dashboard');
     } catch (error) {
+      console.error('매물 등록 오류:', error);
       setNotice(error.message || '매물 등록 중 오류가 발생했습니다.');
     }
   };
@@ -609,7 +618,7 @@ export default function App() {
                     multiple
                     onChange={(e) => setImageFiles(Array.from(e.target.files || []).slice(0, 5))}
                   />
-                  <div className="upload-box">사진은 최대 5장까지 업로드할 수 있습니다.</div>
+                  <div className="upload-box">사진은 최대 5장까지 업로드할 수 있습니다. 사진 없이도 등록 가능합니다.</div>
                   {imageFiles.length ? (
                     <div className="image-preview-grid">
                       {imageFiles.map((file, index) => (
@@ -750,17 +759,15 @@ export default function App() {
                 ) : (
                   <span className="chip">등록된 전화번호 없음</span>
                 )}
-              </div>
-              {isAdmin ? (
-                <div className="cta-actions" style={{ marginTop: 18 }}>
+                {isAdmin ? (
                   <button className="btn btn-primary" onClick={() => {
                     deleteListing(selectedListing.id);
                     setSelectedListing(null);
                   }}>
                     관리자 삭제
                   </button>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           )}
         </Modal>
