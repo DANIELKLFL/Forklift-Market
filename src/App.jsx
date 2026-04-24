@@ -716,7 +716,25 @@ export default function App() {
         )}
 
 
-        <footer className="footer">© 2026 FORKLIFT MARKET. All rights reserved.</footer>
+        <footer className="footer">
+  © 2026 FORKLIFT MARKET. All rights reserved.
+
+  <div style={{ marginTop: 10 }}>
+    <details>
+      <summary>개인정보처리방침</summary>
+      <p>본 사이트는 업체명, 연락처, 이메일 등을 수집하며 서비스 제공을 위해 사용됩니다.</p>
+      <p>회원 탈퇴 시 개인정보는 즉시 삭제됩니다.</p>
+      <p>문의: 너이메일@gmail.com</p>
+    </details>
+
+    <details style={{ marginTop: 10 }}>
+      <summary>이용약관</summary>
+      <p>본 사이트는 중고지게차 매물 정보 제공 플랫폼입니다.</p>
+      <p>허위매물 등록 시 삭제될 수 있습니다.</p>
+      <p>거래 책임은 판매자와 구매자에게 있습니다.</p>
+    </details>
+  </div>
+</footer>
       </div>
         </>
       } />
