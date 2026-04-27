@@ -139,6 +139,10 @@ async function compressImageFile(file, maxWidth = 1200, quality = 0.72) {
 
 function ListingCard({ item, isAdmin, onDelete }) {
   const navigate = useNavigate();
+
+  const goToDetail = () => {
+    navigate(`/listing/${item.id}`);
+  };
   const isAuction = item.saleType === 'auction';
   const currentPrice = item.currentBid || item.auctionStartPrice || item.price;
 
@@ -173,7 +177,7 @@ function ListingCard({ item, isAdmin, onDelete }) {
             <div className="price-value">{currentPrice ? `${currentPrice}만원` : '-'}</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-light" onClick={() => navigate(`/listing/${item.id}`)}>
+            <button type="button" className="btn btn-light" onClick={goToDetail}>
               {isAuction ? '경매보기' : '상세보기'}
             </button>
 
