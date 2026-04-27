@@ -463,18 +463,34 @@ export default function App() {
 
     try {
       let imageUrls = [];
+let thumbnailUrls = [];
 
-      if (imageFiles && imageFiles.length > 0) {
-        imageUrls = await Promise.all(
-          imageFiles.slice(0, 5).map(async (file) => {
-            const compressedFile = await compressImageFile(file);
-            const safeName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
-            const imageRef = ref(storage, `listings/${currentUser.uid}/${Date.now()}-${safeName}`);
-            await uploadBytes(imageRef, compressedFile);
-            return getDownloadURL(imageRef);
-          })
-        );
-      }
+if (imageFiles && imageFiles.length > 0) {
+  const uploadedImages = await Promise.all(
+    imageFiles.slice(0, 5).map(async (file) => {
+      const compressedFile = await compressImageFile(file, 1200, 0.72);
+      const thumbnailFile = await compressImageFile(file, 420, 0.62);
+
+      const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const safeImageName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+      const safeThumbName = thumbnailFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+
+      const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
+      const thumbRef = ref(storage, `listings/${currentUser.uid}/thumbs/${timeKey}-${safeThumbName}`);
+
+      await uploadBytes(imageRef, compressedFile);
+      await uploadBytes(thumbRef, thumbnailFile);
+
+      const imageUrl = await getDownloadURL(imageRef);
+      const thumbnailUrl = await getDownloadURL(thumbRef);
+
+      return { imageUrl, thumbnailUrl };
+    })
+  );
+
+  imageUrls = uploadedImages.map((item) => item.imageUrl);
+  thumbnailUrls = uploadedImages.map((item) => item.thumbnailUrl);
+}
 
       const isAuction = listingForm.saleType === 'auction';
       const startPrice = Number(listingForm.auctionStartPrice || 0);
