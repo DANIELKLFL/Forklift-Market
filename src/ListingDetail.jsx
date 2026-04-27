@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   doc,
@@ -10,82 +10,31 @@ import {
 import { db, auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
-const ADMIN_EMAIL = 'best@example.com';
-
-function getTimeLeftText(endTime) {
-  if (!endTime) return '종료일 미정';
-
-  const end = new Date(endTime).getTime();
-  const now = Date.now();
-  const diff = end - now;
-
-  if (Number.isNaN(end)) return '종료일 미정';
-  if (diff <= 0) return '경매 종료';
-
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-  const minutes = Math.floor((diff / (1000 * 60)) % 60);
-
-  if (days > 0) return `${days}일 ${hours}시간 남음`;
-  if (hours > 0) return `${hours}시간 ${minutes}분 남음`;
-  return `${minutes}분 남음`;
-}
-
 export default function ListingDetail() {
   const { id } = useParams();
 
   const [item, setItem] = useState(null);
-  const [dealerPrice, setDealerPrice] = useState(null);
   const [user, setUser] = useState(null);
-  const [memberType, setMemberType] = useState(null);
   const [bidAmount, setBidAmount] = useState('');
-  const [notice, setNotice] = useState('');
 
-  // 🔥 갤러리 상태
   const [viewerOpen, setViewerOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // 🔥 터치 / 줌
+  const startX = useRef(0);
+  const scale = useRef(1);
+
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (u) => {
-      setUser(u || null);
-    });
+    const unsubAuth = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsubAuth();
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-
-    const unsub = onSnapshot(doc(db, 'companies', user.uid), (snap) => {
-      if (snap.exists()) {
-        setMemberType(snap.data().memberType);
-      }
-    });
-
-    return () => unsub();
-  }, [user]);
-
-  useEffect(() => {
     const unsub = onSnapshot(doc(db, 'listings', id), (snap) => {
-      if (snap.exists()) {
-        setItem({ id: snap.id, ...snap.data() });
-      }
+      if (snap.exists()) setItem({ id: snap.id, ...snap.data() });
     });
-
     return () => unsub();
   }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    if (memberType !== 'seller' && user?.email !== ADMIN_EMAIL) return;
-
-    const unsub = onSnapshot(doc(db, 'dealerPrices', id), (snap) => {
-      if (snap.exists()) {
-        setDealerPrice(snap.data().dealerPrice);
-      }
-    });
-
-    return () => unsub();
-  }, [id, memberType, user]);
 
   const handleBid = async () => {
     if (!user) return alert('로그인 필요');
@@ -130,7 +79,7 @@ export default function ListingDetail() {
 
       <h1>{item.title}</h1>
 
-      {/* 🔥 이미지 2x2 */}
+      {/* 🔥 2x2 이미지 */}
       {item.imageUrls?.length > 0 && (
         <div
           style={{
@@ -170,17 +119,12 @@ export default function ListingDetail() {
       {isAuction && (
         <>
           <p>입찰수 {item.bidCount || 0}</p>
-
-          <input
-            value={bidAmount}
-            onChange={(e) => setBidAmount(e.target.value)}
-          />
-
+          <input value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} />
           <button onClick={handleBid}>입찰</button>
         </>
       )}
 
-      {/* 🔥 갤러리 확대 */}
+      {/* 🔥 갤러리 */}
       {viewerOpen && (
         <div
           onClick={() => setViewerOpen(false)}
@@ -191,18 +135,74 @@ export default function ListingDetail() {
             width: '100%',
             height: '100%',
             background: '#000',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
             zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
+          {/* 이미지 */}
           <img
             src={item.imageUrls[currentIndex]}
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '90%', maxHeight: '90%' }}
+            onTouchStart={(e) => (startX.current = e.touches[0].clientX)}
+            onTouchEnd={(e) => {
+              const diff = e.changedTouches[0].clientX - startX.current;
+              if (diff > 50) {
+                setCurrentIndex((prev) =>
+                  prev === 0 ? item.imageUrls.length - 1 : prev - 1
+                );
+              } else if (diff < -50) {
+                setCurrentIndex((prev) =>
+                  prev === item.imageUrls.length - 1 ? 0 : prev + 1
+                );
+              }
+            }}
+            onWheel={(e) => {
+              e.preventDefault();
+              scale.current += e.deltaY * -0.001;
+              scale.current = Math.min(Math.max(1, scale.current), 3);
+              e.target.style.transform = `scale(${scale.current})`;
+            }}
+            style={{
+              maxWidth: '90%',
+              maxHeight: '80%',
+              transition: '0.2s',
+            }}
           />
 
+          {/* 썸네일 */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              marginTop: 20,
+              overflowX: 'auto',
+            }}
+          >
+            {item.imageUrls.map((url, i) => (
+              <img
+                key={i}
+                src={url}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentIndex(i);
+                }}
+                style={{
+                  width: 60,
+                  height: 60,
+                  objectFit: 'cover',
+                  border:
+                    currentIndex === i ? '2px solid red' : '2px solid #333',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                }}
+              />
+            ))}
+          </div>
+
+          {/* 버튼 */}
           <button
             onClick={(e) => {
               e.stopPropagation();
