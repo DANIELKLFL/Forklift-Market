@@ -14,6 +14,7 @@ import {
   orderBy,
   query,
   limit,
+  increment,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -227,6 +228,7 @@ export default function App() {
   const [auctionVisibleCount, setAuctionVisibleCount] = useState(LISTINGS_PAGE_SIZE);
   const [editingListingId, setEditingListingId] = useState('');
   const [editForm, setEditForm] = useState(initialForm);
+  const [visitorCount, setVisitorCount] = useState(0);
 
   const isAdmin = currentUser?.email === 'best@example.com';
   const isSeller = currentCompany?.memberType !== 'buyer' && !!currentCompany;
@@ -234,6 +236,26 @@ export default function App() {
 
   useEffect(() => {
     document.title = 'FORKLIFT MARKET | 중고지게차 매물 플랫폼';
+  }, []);
+
+  useEffect(() => {
+    const statRef = doc(db, 'siteStats', 'homepage');
+
+    const unsubStats = onSnapshot(statRef, (snap) => {
+      if (snap.exists()) {
+        setVisitorCount(Number(snap.data().visitorCount || 0));
+      }
+    });
+
+    const alreadyCounted = sessionStorage.getItem('forkliftMarketVisited');
+    if (!alreadyCounted) {
+      sessionStorage.setItem('forkliftMarketVisited', 'yes');
+      setDoc(statRef, { visitorCount: increment(1) }, { merge: true }).catch((error) => {
+        console.error('방문자 수 업데이트 오류:', error);
+      });
+    }
+
+    return () => unsubStats();
   }, []);
 
   useEffect(() => {
@@ -290,6 +312,25 @@ export default function App() {
   );
 
   const pendingListings = useMemo(() => listings.filter((item) => item.status === 'pending'), [listings]);
+
+  const serviceCompanies = useMemo(() => {
+    return companies.filter((company) => {
+      if (company.memberType === 'buyer') return false;
+      const text = [company.companyName, company.businessType, company.region]
+        .join(' ')
+        .toLowerCase();
+      return text.includes('수리') || text.includes('정비') || text.includes('a/s') || text.includes('as') || text.includes('렌탈') || text.includes('매매');
+    });
+  }, [companies]);
+
+  const serviceCompaniesByRegion = useMemo(() => {
+    return serviceCompanies.reduce((acc, company) => {
+      const region = company.region || '지역 미등록';
+      if (!acc[region]) acc[region] = [];
+      acc[region].push(company);
+      return acc;
+    }, {});
+  }, [serviceCompanies]);
 
   const filteredListings = useMemo(() => {
     return visibleListings.filter((item) => {
@@ -869,6 +910,7 @@ export default function App() {
                     ['home', '홈'],
                     ['market', '매물보기'],
                     ['auction', '경매물품'],
+                    ['service', 'A/S업체'],
                     ['seller', '회원가입/로그인'],
                     ...(isSeller || isAdmin ? [['register', '매물등록']] : []),
                     ...(isSeller ? [['dashboard', '대시보드']] : []),
@@ -901,6 +943,7 @@ export default function App() {
                         <StatCard label="경매물품" value={`${auctionListings.length}+`} />
                         <StatCard label="참여 업체" value={`${companies.length}+`} />
                         <StatCard label="승인대기" value={`${pendingListings.length}+`} />
+                        <StatCard label="방문자" value={`${visitorCount.toLocaleString()}명`} />
                       </div>
                     </div>
                     <div className="search-panel">
@@ -987,6 +1030,51 @@ export default function App() {
                   더보기 ({displayedAuctionListings.length}/{filteredAuctionListings.length})
                 </button>
               </div>
+            )}
+
+            {activeTab === 'service' && (
+              <section className="section">
+                <div className="container">
+                  <SectionTitle eyebrow="A/S Network" title="지역별 지게차 A/S 전문업체" subtitle="FORKLIFT MARKET에 등록된 업체를 지역별로 확인하고 바로 전화 문의할 수 있습니다." />
+
+                  {Object.keys(serviceCompaniesByRegion).length ? (
+                    <div className="list-stack">
+                      {Object.entries(serviceCompaniesByRegion).map(([region, rows]) => (
+                        <div key={region} className="dark-card">
+                          <h3 className="flow-title">{region}</h3>
+                          <div className="company-admin-grid" style={{ marginTop: 18 }}>
+                            {rows.map((company) => (
+                              <div key={company.id} className="company-card">
+                                <div>
+                                  <div style={{ fontSize: 20, fontWeight: 900 }}>{company.companyName || '업체명 없음'}</div>
+                                  <div className="list-meta">업무: {company.businessType || 'A/S · 정비 · 매매'}</div>
+                                  <div className="list-meta">담당자: {company.name || '-'}</div>
+                                  <div className="list-meta">지역: {company.region || '-'}</div>
+                                </div>
+                                <div className="limit-control">
+                                  {company.phone ? (
+                                    <a
+                                      href={`tel:${company.phone}`}
+                                      className="btn btn-primary"
+                                      style={{ color: '#fff', textDecoration: 'none' }}
+                                    >
+                                      전화문의 {company.phone}
+                                    </a>
+                                  ) : (
+                                    <div className="list-meta">연락처 미등록</div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="glass-card">아직 등록된 A/S 전문업체가 없습니다.</div>
+                  )}
+                </div>
+              </section>
             )}
 
             {activeTab === 'seller' && (
