@@ -12,6 +12,25 @@ import { onAuthStateChanged } from 'firebase/auth';
 
 const ADMIN_EMAIL = 'best@example.com';
 
+function getTimeLeftText(endTime) {
+  if (!endTime) return '종료일 미정';
+
+  const end = new Date(endTime).getTime();
+  const now = Date.now();
+  const diff = end - now;
+
+  if (Number.isNaN(end)) return '종료일 미정';
+  if (diff <= 0) return '경매 종료';
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const minutes = Math.floor((diff / (1000 * 60)) % 60);
+
+  if (days > 0) return `${days}일 ${hours}시간 남음`;
+  if (hours > 0) return `${hours}시간 ${minutes}분 남음`;
+  return `${minutes}분 남음`;
+}
+
 export default function ListingDetail() {
   const { id } = useParams();
 
@@ -39,6 +58,8 @@ export default function ListingDetail() {
     const unsub = onSnapshot(doc(db, 'companies', user.uid), (snap) => {
       if (snap.exists()) {
         setMemberType(snap.data().memberType);
+      } else {
+        setMemberType(null);
       }
     });
 
@@ -210,7 +231,11 @@ export default function ListingDetail() {
   };
 
   if (!item) {
-    return <div style={{ padding: 40 }}>매물 불러오는 중...</div>;
+    return (
+      <div style={{ padding: 40, background: '#0a0a0a', color: '#fff', minHeight: '100vh' }}>
+        매물 불러오는 중...
+      </div>
+    );
   }
 
   const isAuction = item.saleType === 'auction';
@@ -245,7 +270,7 @@ export default function ListingDetail() {
       )}
 
       <h2 style={{ color: '#ef4444' }}>
-        {isAuction ? `현재 입찰가 ${currentPrice}만원` : `판매가 ${item.price}만원`}
+        {isAuction ? '경매 진행 중' : `판매가 ${item.price}만원`}
       </h2>
 
       {(memberType === 'seller' || user?.email === ADMIN_EMAIL) && dealerPrice && (
@@ -272,16 +297,16 @@ export default function ListingDetail() {
           background: '#111',
           border: '1px solid rgba(255,255,255,0.1)'
         }}>
-          <h2 style={{ color: '#ef4444', marginTop: 0 }}>경매 입찰</h2>
+          <h2 style={{ color: '#ef4444', marginTop: 0 }}>비공개 입찰</h2>
 
-          <p>시작가: {item.auctionStartPrice || '-'}만원</p>
-          <p>현재가: {currentPrice || '-'}만원</p>
-          <p>입찰 단위: {item.bidUnit || '-'}만원</p>
-          <p>최소 입찰가: {minBid}만원</p>
+          <p>입찰 방식: 비공개 입찰</p>
           <p>입찰 수: {item.bidCount || 0}회</p>
-          <p>최고입찰자: {item.highestBidderEmail || '아직 없음'}</p>
+          <p>입찰 단위: {item.bidUnit || '-'}만원</p>
           <p>경매 시작: {item.auctionStartAt || '미정'}</p>
           <p>경매 종료: {item.auctionEndsAt || '미정'}</p>
+          <p style={{ color: '#fca5a5', fontWeight: 800 }}>
+            남은시간: {getTimeLeftText(item.auctionEndsAt)}
+          </p>
 
           {item.auctionDesc && (
             <p style={{ marginTop: 20, lineHeight: 1.7 }}>
@@ -293,7 +318,7 @@ export default function ListingDetail() {
             <input
               value={bidAmount}
               onChange={(e) => setBidAmount(e.target.value)}
-              placeholder={`최소 ${minBid}만원 이상 입력`}
+              placeholder="입찰 금액 입력 (만원)"
               type="number"
               style={{
                 padding: 15,
@@ -332,7 +357,7 @@ export default function ListingDetail() {
                   cursor: 'pointer'
                 }}
               >
-                즉시구매 {item.buyNowPrice}만원
+                즉시구매
               </button>
             )}
           </div>
