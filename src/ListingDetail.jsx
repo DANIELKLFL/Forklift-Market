@@ -41,25 +41,23 @@ export default function ListingDetail() {
   const [bidAmount, setBidAmount] = useState('');
   const [notice, setNotice] = useState('');
 
+  // 🔥 갤러리 상태
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       setUser(u || null);
     });
-
     return () => unsubAuth();
   }, []);
 
   useEffect(() => {
-    if (!user) {
-      setMemberType(null);
-      return;
-    }
+    if (!user) return;
 
     const unsub = onSnapshot(doc(db, 'companies', user.uid), (snap) => {
       if (snap.exists()) {
         setMemberType(snap.data().memberType);
-      } else {
-        setMemberType(null);
       }
     });
 
@@ -70,8 +68,6 @@ export default function ListingDetail() {
     const unsub = onSnapshot(doc(db, 'listings', id), (snap) => {
       if (snap.exists()) {
         setItem({ id: snap.id, ...snap.data() });
-      } else {
-        setItem(null);
       }
     });
 
@@ -85,8 +81,6 @@ export default function ListingDetail() {
     const unsub = onSnapshot(doc(db, 'dealerPrices', id), (snap) => {
       if (snap.exists()) {
         setDealerPrice(snap.data().dealerPrice);
-      } else {
-        setDealerPrice(null);
       }
     });
 
@@ -94,309 +88,149 @@ export default function ListingDetail() {
   }, [id, memberType, user]);
 
   const handleBid = async () => {
-    if (!user) {
-      setNotice('로그인 후 입찰할 수 있습니다.');
-      return;
-    }
-
-    if (!item || item.saleType !== 'auction') {
-      setNotice('경매 물품이 아닙니다.');
-      return;
-    }
+    if (!user) return alert('로그인 필요');
 
     const bidNumber = Number(bidAmount);
+    if (!bidNumber) return;
 
-    if (!bidNumber || bidNumber <= 0) {
-      setNotice('입찰 금액을 입력해주세요.');
-      return;
-    }
+    const listingRef = doc(db, 'listings', id);
+    const bidRef = doc(collection(db, 'listings', id, 'bids'));
 
-    try {
-      const listingRef = doc(db, 'listings', id);
-      const bidRef = doc(collection(db, 'listings', id, 'bids'));
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(listingRef);
+      const data = snap.data();
 
-      await runTransaction(db, async (transaction) => {
-        const snap = await transaction.get(listingRef);
+      const current = data.currentBid || data.auctionStartPrice || 0;
+      const min = current + (data.bidUnit || 1);
 
-        if (!snap.exists()) {
-          throw new Error('매물을 찾을 수 없습니다.');
-        }
+      if (bidNumber < min) throw new Error('입찰가 낮음');
 
-        const data = snap.data();
-
-        if (data.saleType !== 'auction') {
-          throw new Error('경매 물품이 아닙니다.');
-        }
-
-        if (data.status !== 'active') {
-          throw new Error('승인된 경매만 입찰할 수 있습니다.');
-        }
-
-        const now = Date.now();
-        const start = data.auctionStartAt ? new Date(data.auctionStartAt).getTime() : null;
-        const end = data.auctionEndsAt ? new Date(data.auctionEndsAt).getTime() : null;
-
-        if (start && now < start) {
-          throw new Error('아직 경매 시작 전입니다.');
-        }
-
-        if (end && now > end) {
-          throw new Error('이미 종료된 경매입니다.');
-        }
-
-        const currentBid = Number(data.currentBid || data.auctionStartPrice || data.price || 0);
-        const bidUnit = Number(data.bidUnit || 1);
-        const minBid = currentBid + bidUnit;
-
-        if (bidNumber < minBid) {
-          throw new Error(`최소 입찰가는 ${minBid}만원입니다.`);
-        }
-
-        transaction.update(listingRef, {
-          currentBid: bidNumber,
-          bidCount: Number(data.bidCount || 0) + 1,
-          highestBidderId: user.uid,
-          highestBidderEmail: user.email,
-          highestBidderName: user.email,
-        });
-
-        transaction.set(bidRef, {
-          amount: bidNumber,
-          bidderId: user.uid,
-          bidderEmail: user.email,
-          bidderName: user.email,
-          memberType: memberType || 'unknown',
-          type: 'bid',
-          createdAt: serverTimestamp(),
-        });
+      tx.update(listingRef, {
+        currentBid: bidNumber,
+        bidCount: (data.bidCount || 0) + 1,
       });
 
-      setBidAmount('');
-      setNotice('입찰이 완료되었습니다.');
-    } catch (error) {
-      setNotice(error.message || '입찰 중 오류가 발생했습니다.');
-    }
-  };
-
-  const handleBuyNow = async () => {
-    if (!user) {
-      setNotice('로그인 후 즉시구매할 수 있습니다.');
-      return;
-    }
-
-    if (!item?.buyNowPrice) {
-      setNotice('즉시구매가가 없습니다.');
-      return;
-    }
-
-    const ok = window.confirm('즉시구매하시겠습니까?');
-    if (!ok) return;
-
-    try {
-      const listingRef = doc(db, 'listings', id);
-      const bidRef = doc(collection(db, 'listings', id, 'bids'));
-
-      await runTransaction(db, async (transaction) => {
-        const snap = await transaction.get(listingRef);
-
-        if (!snap.exists()) {
-          throw new Error('매물을 찾을 수 없습니다.');
-        }
-
-        const data = snap.data();
-
-        transaction.update(listingRef, {
-          currentBid: Number(data.buyNowPrice),
-          bidCount: Number(data.bidCount || 0) + 1,
-          highestBidderId: user.uid,
-          highestBidderEmail: user.email,
-          highestBidderName: user.email,
-          auctionStatus: 'ended',
-          status: 'sold',
-        });
-
-        transaction.set(bidRef, {
-          amount: Number(data.buyNowPrice),
-          bidderId: user.uid,
-          bidderEmail: user.email,
-          bidderName: user.email,
-          memberType: memberType || 'unknown',
-          type: 'buyNow',
-          createdAt: serverTimestamp(),
-        });
+      tx.set(bidRef, {
+        amount: bidNumber,
+        userId: user.uid,
+        createdAt: serverTimestamp(),
       });
+    });
 
-      setNotice('즉시구매가 완료되었습니다.');
-    } catch (error) {
-      setNotice(error.message || '즉시구매 중 오류가 발생했습니다.');
-    }
+    setBidAmount('');
   };
 
-  if (!item) {
-    return (
-      <div style={{ padding: 40, background: '#0a0a0a', color: '#fff', minHeight: '100vh' }}>
-        매물 불러오는 중...
-      </div>
-    );
-  }
+  if (!item) return <div style={{ padding: 40 }}>로딩중...</div>;
 
   const isAuction = item.saleType === 'auction';
 
   return (
-    <div style={{ padding: 40, background: '#0a0a0a', color: '#fff', minHeight: '100vh' }}>
-      <Link to="/" style={{ color: '#f87171' }}>← 홈으로</Link>
-
-      {notice && (
-        <div style={{
-          marginTop: 20,
-          padding: 15,
-          borderRadius: 12,
-          background: 'rgba(220,38,38,0.15)',
-          border: '1px solid rgba(220,38,38,0.3)',
-          color: '#fecaca'
-        }}>
-          {notice}
-        </div>
-      )}
+    <div style={{ padding: 40, background: '#0a0a0a', color: '#fff' }}>
+      <Link to="/">← 홈</Link>
 
       <h1>{item.title}</h1>
 
+      {/* 🔥 이미지 2x2 */}
       {item.imageUrls?.length > 0 && (
-  <div
-    style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-      gap: 12,
-      marginTop: 20,
-      maxWidth: 900
-    }}
-  >
-          {item.imageUrls.map((url, index) => (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: 12,
+            marginTop: 20,
+            maxWidth: 900,
+          }}
+        >
+          {item.imageUrls.map((url, i) => (
             <img
-              key={`${url}-${index}`}
+              key={i}
               src={url}
-              alt={`${item.title} 이미지 ${index + 1}`}
+              onClick={() => {
+                setCurrentIndex(i);
+                setViewerOpen(true);
+              }}
               style={{
                 width: '100%',
-                borderRadius: 20,
-                border: '1px solid rgba(255,255,255,0.1)'
+                height: 220,
+                objectFit: 'cover',
+                borderRadius: 16,
+                cursor: 'pointer',
               }}
             />
           ))}
         </div>
       )}
 
-      <h2 style={{ color: '#ef4444', marginTop: 30 }}>
-        {isAuction ? '경매 진행 중' : `판매가 ${item.price}만원`}
+      <h2 style={{ color: 'red' }}>
+        {isAuction ? '경매중' : `${item.price}만원`}
       </h2>
 
-      {(memberType === 'seller' || user?.email === ADMIN_EMAIL) && dealerPrice && (
-        <h3 style={{ color: '#facc15' }}>
-          업체가 {dealerPrice}만원
-        </h3>
-      )}
-
-      <div style={{ marginTop: 20, lineHeight: 1.8 }}>
-        <p>{item.brand} · {item.ton} · {item.year}년식</p>
-        <p>지역: {item.location || '-'}</p>
-        <p>마스트: {item.mast || '-'}</p>
-        <p>가동시간: {item.hours || '-'}</p>
-        <p>배터리/옵션: {item.battery || '-'}</p>
-        <p>{item.description}</p>
-      </div>
+      <p>{item.description}</p>
 
       {isAuction && (
-        <div style={{
-          marginTop: 30,
-          maxWidth: 800,
-          padding: 24,
-          borderRadius: 20,
-          background: '#111',
-          border: '1px solid rgba(255,255,255,0.1)'
-        }}>
-          <h2 style={{ color: '#ef4444', marginTop: 0 }}>비공개 입찰</h2>
+        <>
+          <p>입찰수 {item.bidCount || 0}</p>
 
-          <p>입찰 방식: 비공개 입찰</p>
-          <p>입찰 수: {item.bidCount || 0}회</p>
-          <p>입찰 단위: {item.bidUnit || '-'}만원</p>
-          <p>경매 시작: {item.auctionStartAt || '미정'}</p>
-          <p>경매 종료: {item.auctionEndsAt || '미정'}</p>
-          <p style={{ color: '#fca5a5', fontWeight: 800 }}>
-            남은시간: {getTimeLeftText(item.auctionEndsAt)}
-          </p>
+          <input
+            value={bidAmount}
+            onChange={(e) => setBidAmount(e.target.value)}
+          />
 
-          {item.auctionDesc && (
-            <p style={{ marginTop: 20, lineHeight: 1.7 }}>
-              {item.auctionDesc}
-            </p>
-          )}
-
-          <div style={{ display: 'grid', gap: 12, marginTop: 20 }}>
-            <input
-              value={bidAmount}
-              onChange={(e) => setBidAmount(e.target.value)}
-              placeholder="입찰 금액 입력 (만원)"
-              type="number"
-              style={{
-                padding: 15,
-                borderRadius: 12,
-                border: '1px solid rgba(255,255,255,0.15)',
-                background: '#050505',
-                color: '#fff'
-              }}
-            />
-
-            <button
-              onClick={handleBid}
-              style={{
-                padding: 16,
-                borderRadius: 14,
-                border: 'none',
-                background: '#dc2626',
-                color: '#fff',
-                fontWeight: 900,
-                cursor: 'pointer'
-              }}
-            >
-              입찰하기
-            </button>
-
-            {item.buyNowPrice && (
-              <button
-                onClick={handleBuyNow}
-                style={{
-                  padding: 16,
-                  borderRadius: 14,
-                  border: '1px solid rgba(255,255,255,0.18)',
-                  background: '#fff',
-                  color: '#111',
-                  fontWeight: 900,
-                  cursor: 'pointer'
-                }}
-              >
-                즉시구매
-              </button>
-            )}
-          </div>
-        </div>
+          <button onClick={handleBid}>입찰</button>
+        </>
       )}
 
-      {item.sellerPhone && (
-        <a
-          href={`tel:${item.sellerPhone}`}
+      {/* 🔥 갤러리 확대 */}
+      {viewerOpen && (
+        <div
+          onClick={() => setViewerOpen(false)}
           style={{
-            display: 'inline-block',
-            marginTop: 20,
-            padding: '14px 20px',
-            borderRadius: 14,
-            background: '#dc2626',
-            color: '#fff',
-            textDecoration: 'none',
-            fontWeight: 900
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: '#000',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 9999,
           }}
         >
-          전화하기: {item.sellerPhone}
-        </a>
+          <img
+            src={item.imageUrls[currentIndex]}
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '90%', maxHeight: '90%' }}
+          />
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setCurrentIndex(
+                currentIndex === 0
+                  ? item.imageUrls.length - 1
+                  : currentIndex - 1
+              );
+            }}
+            style={{ position: 'absolute', left: 20, fontSize: 40 }}
+          >
+            ‹
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setCurrentIndex(
+                currentIndex === item.imageUrls.length - 1
+                  ? 0
+                  : currentIndex + 1
+              );
+            }}
+            style={{ position: 'absolute', right: 20, fontSize: 40 }}
+          >
+            ›
+          </button>
+        </div>
       )}
     </div>
   );
