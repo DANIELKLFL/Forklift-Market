@@ -460,39 +460,11 @@ export default function App() {
     }
 
     try {
-      let imageUrls = [];
-      let thumbnailUrls = [];
-
-      if (imageFiles && imageFiles.length > 0) {
-        const uploadedImages = await Promise.all(
-          imageFiles.slice(0, 5).map(async (file) => {
-            const compressedFile = await compressImageFile(file, 1200, 0.72);
-            const thumbnailFile = await compressImageFile(file, 420, 0.62);
-
-            const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            const safeImageName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
-            const safeThumbName = thumbnailFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
-
-            const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
-            const thumbRef = ref(storage, `listings/${currentUser.uid}/thumbs/${timeKey}-${safeThumbName}`);
-
-            await uploadBytes(imageRef, compressedFile);
-            await uploadBytes(thumbRef, thumbnailFile);
-
-            const imageUrl = await getDownloadURL(imageRef);
-            const thumbnailUrl = await getDownloadURL(thumbRef);
-
-            return { imageUrl, thumbnailUrl };
-          })
-        );
-
-        imageUrls = uploadedImages.map((item) => item.imageUrl);
-        thumbnailUrls = uploadedImages.map((item) => item.thumbnailUrl);
-      }
-
       const isAuction = listingForm.saleType === 'auction';
       const startPrice = Number(listingForm.auctionStartPrice || 0);
+      const selectedFiles = imageFiles.slice(0, 5);
 
+      // 1단계: 매물 정보부터 먼저 저장합니다. 사진은 잠시 후 자동으로 붙습니다.
       const listingDocRef = await addDoc(collection(db, 'listings'), {
         companyId: currentCompany.id,
         authUserId: currentUser.uid,
@@ -521,8 +493,9 @@ export default function App() {
         highestBidderEmail: '',
         highestBidderName: '',
         auctionStatus: isAuction ? 'scheduled' : null,
-        imageUrls,
-        thumbnailUrls,
+        imageUrls: [],
+        thumbnailUrls: [],
+        imageUploadStatus: selectedFiles.length ? 'uploading' : 'none',
         status: 'pending',
         featured: false,
         createdAt: serverTimestamp(),
@@ -538,9 +511,48 @@ export default function App() {
         });
       }
 
+      // 2단계: 사진은 뒤에서 따로 업로드합니다. 그래서 사용자는 바로 다음 작업을 할 수 있습니다.
+      if (selectedFiles.length > 0) {
+        Promise.all(
+          selectedFiles.map(async (file) => {
+            const compressedFile = await compressImageFile(file, 1200, 0.72);
+            const thumbnailFile = await compressImageFile(file, 420, 0.62);
+
+            const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const safeImageName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+            const safeThumbName = thumbnailFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+
+            const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
+            const thumbRef = ref(storage, `listings/${currentUser.uid}/thumbs/${timeKey}-${safeThumbName}`);
+
+            await uploadBytes(imageRef, compressedFile);
+            await uploadBytes(thumbRef, thumbnailFile);
+
+            const imageUrl = await getDownloadURL(imageRef);
+            const thumbnailUrl = await getDownloadURL(thumbRef);
+
+            return { imageUrl, thumbnailUrl };
+          })
+        )
+          .then(async (uploadedImages) => {
+            await updateDoc(doc(db, 'listings', listingDocRef.id), {
+              imageUrls: uploadedImages.map((image) => image.imageUrl),
+              thumbnailUrls: uploadedImages.map((image) => image.thumbnailUrl),
+              imageUploadStatus: 'done',
+              imageUploadedAt: serverTimestamp(),
+            });
+          })
+          .catch(async (error) => {
+            console.error('사진 업로드 오류:', error);
+            await updateDoc(doc(db, 'listings', listingDocRef.id), {
+              imageUploadStatus: 'error',
+            });
+          });
+      }
+
       setListingForm(initialForm);
       setImageFiles([]);
-      setNotice('매물 등록이 완료되었습니다. 관리자 승인 후 공개됩니다.');
+      setNotice(selectedFiles.length ? '매물 정보가 먼저 저장되었습니다. 사진은 뒤에서 자동 업로드 중입니다.' : '매물 등록이 완료되었습니다. 관리자 승인 후 공개됩니다.');
       setActiveTab('dashboard');
     } catch (error) {
       console.error('매물 등록 오류:', error);
