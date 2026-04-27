@@ -214,6 +214,8 @@ export default function App() {
   const [memberType, setMemberType] = useState('seller');
   const [marketVisibleCount, setMarketVisibleCount] = useState(LISTINGS_PAGE_SIZE);
   const [auctionVisibleCount, setAuctionVisibleCount] = useState(LISTINGS_PAGE_SIZE);
+  const [editingListingId, setEditingListingId] = useState('');
+  const [editForm, setEditForm] = useState(initialForm);
 
   const isAdmin = currentUser?.email === 'best@example.com';
   const isSeller = currentCompany?.memberType !== 'buyer' && !!currentCompany;
@@ -513,7 +515,11 @@ export default function App() {
     }
   };
 
-  const updateMyListingStatus = async (id, nextStatus) => {
+  const startEditListing = (item) => {
+    if (!currentUser || item.authUserId !== currentUser.uid) {
+      setNotice('본인 매물만 수정할 수 있습니다.');
+      return;
+    }
     try {
       await updateDoc(doc(db, 'listings', id), { status: nextStatus });
       setNotice('매물 상태가 변경되었습니다.');
