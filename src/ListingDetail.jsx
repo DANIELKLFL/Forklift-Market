@@ -15,18 +15,32 @@ function getTimeLeftText(endTime) {
   const diff = new Date(endTime).getTime() - Date.now();
   if (Number.isNaN(diff)) return '종료일 미정';
   if (diff <= 0) return '경매 종료';
+
   const d = Math.floor(diff / 86400000);
   const h = Math.floor((diff / 3600000) % 24);
   const m = Math.floor((diff / 60000) % 60);
+
   if (d > 0) return `${d}일 ${h}시간 남음`;
   if (h > 0) return `${h}시간 ${m}분 남음`;
   return `${m}분 남음`;
 }
 
+function getAuctionPermissionMessage(user, company, item) {
+  if (!user) return '로그인 후 입찰할 수 있습니다.';
+  if (!company) return '회원정보 확인 후 입찰할 수 있습니다.';
+  if (company.memberType !== 'buyer') return '경매 입찰은 인증된 소비자회원만 가능합니다.';
+  if (!company.auctionVerified) return '관리자 경매인증 완료 후 입찰할 수 있습니다.';
+  if (!company.bidDepositPaid) return '입찰보증금 확인 완료 후 입찰할 수 있습니다.';
+  if (item?.authUserId === user.uid) return '본인이 등록한 경매에는 입찰할 수 없습니다.';
+  return '';
+}
+
 export default function ListingDetail() {
   const { id } = useParams();
+
   const [item, setItem] = useState(null);
   const [user, setUser] = useState(null);
+  const [currentCompany, setCurrentCompany] = useState(null);
   const [bidAmount, setBidAmount] = useState('');
   const [notice, setNotice] = useState('');
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -40,6 +54,17 @@ export default function ListingDetail() {
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => setUser(u || null));
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setCurrentCompany(null);
+      return;
+    }
+
+    return onSnapshot(doc(db, 'companies', user.uid), (snap) => {
+      setCurrentCompany(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+    });
+  }, [user]);
 
   useEffect(() => {
     return onSnapshot(doc(db, 'listings', id), (snap) => {
@@ -73,8 +98,10 @@ export default function ListingDetail() {
   };
 
   const handleBid = async () => {
-    if (!user) {
-      setNotice('로그인 후 입찰할 수 있습니다.');
+    const permissionMessage = getAuctionPermissionMessage(user, currentCompany, item);
+
+    if (permissionMessage) {
+      setNotice(permissionMessage);
       return;
     }
 
@@ -83,13 +110,9 @@ export default function ListingDetail() {
       return;
     }
 
-    if (item?.authUserId === user.uid) {
-      setNotice('본인이 등록한 경매에는 입찰할 수 없습니다.');
-      return;
-    }
-
     const bidNumber = Number(bidAmount);
-    if (!bidNumber) {
+
+    if (!bidNumber || bidNumber <= 0) {
       setNotice('입찰 금액을 입력해주세요.');
       return;
     }
@@ -112,28 +135,24 @@ export default function ListingDetail() {
           throw new Error('본인이 등록한 경매에는 입찰할 수 없습니다.');
         }
 
-        const current = Number(data.currentBid || data.auctionStartPrice || 0);
-        const min = current + Number(data.bidUnit || 1);
-
-        if (bidNumber < min) throw new Error(`최소 입찰가는 ${min}만원입니다.`);
-
         tx.update(listingRef, {
-          currentBid: bidNumber,
           bidCount: Number(data.bidCount || 0) + 1,
-          highestBidderId: user.uid,
-          highestBidderEmail: user.email,
+          lastBidAt: serverTimestamp(),
         });
 
         tx.set(bidRef, {
           amount: bidNumber,
           userId: user.uid,
           userEmail: user.email,
+          bidderName: currentCompany?.name || '',
+          bidderPhone: currentCompany?.phone || '',
+          memberType: currentCompany?.memberType || 'buyer',
           createdAt: serverTimestamp(),
         });
       });
 
       setBidAmount('');
-      setNotice('입찰이 완료되었습니다.');
+      setNotice('입찰이 완료되었습니다. 입찰금액은 관리자만 확인할 수 있습니다.');
     } catch (error) {
       setNotice(error.message || '입찰 중 오류가 발생했습니다.');
     }
@@ -147,13 +166,20 @@ export default function ListingDetail() {
   const isAuctionEnded = item.auctionEndsAt
     ? new Date(item.auctionEndsAt).getTime() <= Date.now()
     : false;
+  const auctionPermissionMessage = getAuctionPermissionMessage(user, currentCompany, item);
 
   return (
     <div style={{ padding: 40, background: '#0a0a0a', color: '#fff', minHeight: '100vh' }}>
       <Link to="/" style={{ color: '#f87171' }}>← 홈으로</Link>
 
       {notice && (
-        <div style={{ marginTop: 20, padding: 15, borderRadius: 12, background: 'rgba(220,38,38,0.15)', color: '#fecaca' }}>
+        <div style={{
+          marginTop: 20,
+          padding: 15,
+          borderRadius: 12,
+          background: 'rgba(220,38,38,0.15)',
+          color: '#fecaca'
+        }}>
           {notice}
         </div>
       )}
@@ -204,24 +230,55 @@ export default function ListingDetail() {
       {isAuction && (
         <div style={{ marginTop: 30, maxWidth: 800, padding: 24, borderRadius: 20, background: '#111' }}>
           <h2 style={{ color: '#ef4444', marginTop: 0 }}>비공개 입찰</h2>
+
+          <div style={{
+            marginBottom: 16,
+            padding: 14,
+            borderRadius: 14,
+            background: 'rgba(239,68,68,0.12)',
+            color: '#fecaca',
+            lineHeight: 1.7
+          }}>
+            경매 입찰은 <b>관리자 인증 완료</b> 및 <b>입찰보증금 확인 완료</b>된 소비자회원만 가능합니다.
+            입찰금액은 공개되지 않으며, 관리자만 확인합니다.
+          </div>
+
           <p>입찰 수: {item.bidCount || 0}회</p>
           <p>입찰 단위: {item.bidUnit || '-'}만원</p>
+          <p>경매 시작: {item.auctionStartAt || '미정'}</p>
           <p>경매 종료: {item.auctionEndsAt || '미정'}</p>
           <p style={{ color: '#fca5a5', fontWeight: 800 }}>남은시간: {getTimeLeftText(item.auctionEndsAt)}</p>
 
-          {!isAuctionEnded ? (
+          {!isAuctionEnded && !auctionPermissionMessage ? (
             <>
               <input
                 value={bidAmount}
                 onChange={(e) => setBidAmount(e.target.value)}
                 placeholder="입찰 금액 입력 (만원)"
                 type="number"
-                style={{ width: '100%', marginTop: 12, padding: 15, borderRadius: 12, background: '#050505', color: '#fff', border: '1px solid #333' }}
+                style={{
+                  width: '100%',
+                  marginTop: 12,
+                  padding: 15,
+                  borderRadius: 12,
+                  background: '#050505',
+                  color: '#fff',
+                  border: '1px solid #333'
+                }}
               />
 
               <button
                 onClick={handleBid}
-                style={{ width: '100%', marginTop: 12, padding: 16, borderRadius: 14, background: '#dc2626', color: '#fff', border: 'none', fontWeight: 900 }}
+                style={{
+                  width: '100%',
+                  marginTop: 12,
+                  padding: 16,
+                  borderRadius: 14,
+                  background: '#dc2626',
+                  color: '#fff',
+                  border: 'none',
+                  fontWeight: 900
+                }}
               >
                 입찰하기
               </button>
@@ -234,9 +291,10 @@ export default function ListingDetail() {
               background: 'rgba(239,68,68,0.15)',
               color: '#fca5a5',
               fontWeight: 900,
-              textAlign: 'center'
+              textAlign: 'center',
+              lineHeight: 1.7
             }}>
-              경매가 종료되었습니다.
+              {isAuctionEnded ? '경매가 종료되었습니다.' : auctionPermissionMessage}
             </div>
           )}
         </div>
@@ -245,7 +303,16 @@ export default function ListingDetail() {
       {item.sellerPhone && (
         <a
           href={`tel:${item.sellerPhone}`}
-          style={{ display: 'inline-block', marginTop: 20, padding: '14px 20px', borderRadius: 14, background: '#dc2626', color: '#fff', textDecoration: 'none', fontWeight: 900 }}
+          style={{
+            display: 'inline-block',
+            marginTop: 20,
+            padding: '14px 20px',
+            borderRadius: 14,
+            background: '#dc2626',
+            color: '#fff',
+            textDecoration: 'none',
+            fontWeight: 900
+          }}
         >
           전화하기: {item.sellerPhone}
         </a>
@@ -268,7 +335,15 @@ export default function ListingDetail() {
         >
           <button
             onClick={() => setViewerOpen(false)}
-            style={{ position: 'absolute', top: 18, right: 24, fontSize: 32, background: 'transparent', color: '#fff', border: 'none' }}
+            style={{
+              position: 'absolute',
+              top: 18,
+              right: 24,
+              fontSize: 32,
+              background: 'transparent',
+              color: '#fff',
+              border: 'none'
+            }}
           >
             ✕
           </button>
@@ -318,7 +393,13 @@ export default function ListingDetail() {
             }}
           />
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 18, maxWidth: '92%', overflowX: 'auto' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{
+            display: 'flex',
+            gap: 8,
+            marginTop: 18,
+            maxWidth: '92%',
+            overflowX: 'auto'
+          }} onClick={(e) => e.stopPropagation()}>
             {thumbs.map((url, i) => (
               <img
                 key={`${url}-thumb-${i}`}
