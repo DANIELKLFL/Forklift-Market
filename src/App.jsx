@@ -54,6 +54,7 @@ const initialForm = {
   auctionStartPrice: '',
   buyNowPrice: '',
   bidUnit: '',
+  auctionStartDate: '',
   auctionStartAt: '',
   auctionEndsAt: '',
   auctionDesc: '',
@@ -95,6 +96,27 @@ function getTimeLeftText(endTime) {
   if (days > 0) return `${days}일 ${hours}시간 남음`;
   if (hours > 0) return `${hours}시간 ${minutes}분 남음`;
   return `${minutes}분 남음`;
+}
+
+function makeAuctionSchedule(startDate) {
+  if (!startDate) return { auctionStartAt: '', auctionEndsAt: '' };
+
+  const start = new Date(`${startDate}T12:00:00`);
+  const end = new Date(start.getTime() + 72 * 60 * 60 * 1000);
+
+  const formatLocal = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}`;
+  };
+
+  return {
+    auctionStartAt: formatLocal(start),
+    auctionEndsAt: formatLocal(end),
+  };
 }
 
 async function compressImageFile(file, maxWidth = 1200, quality = 0.72) {
@@ -433,6 +455,8 @@ export default function App() {
         region: signupForm.region,
         businessType: memberType === 'seller' ? signupForm.businessType : '소비자',
         listingLimit: memberType === 'seller' ? DEFAULT_LISTING_LIMIT : 0,
+        auctionVerified: memberType === 'buyer' ? false : true,
+        bidDepositPaid: memberType === 'buyer' ? false : true,
         role: ADMIN_EMAILS.includes(signupForm.email) ? 'admin' : memberType,
         createdAt: serverTimestamp(),
       });
@@ -508,14 +532,8 @@ export default function App() {
     }
 
     if (listingForm.saleType === 'auction') {
-      if (!listingForm.auctionStartPrice || !listingForm.bidUnit || !listingForm.auctionStartAt || !listingForm.auctionEndsAt) {
-        setNotice('경매물품은 시작가, 입찰 단위, 경매 시작시간, 경매 종료시간을 입력해주세요.');
-        setUploading(false);
-        return;
-      }
-
-      if (new Date(listingForm.auctionEndsAt).getTime() <= new Date(listingForm.auctionStartAt).getTime()) {
-        setNotice('경매 종료시간은 시작시간보다 늦어야 합니다.');
+      if (!listingForm.auctionStartPrice || !listingForm.bidUnit || !listingForm.auctionStartDate) {
+        setNotice('경매물품은 시작가, 입찰 단위, 경매 시작날짜를 입력해주세요. 경매는 선택한 날짜 낮 12시부터 72시간 진행됩니다.');
         setUploading(false);
         return;
       }
@@ -526,28 +544,31 @@ export default function App() {
       let imageUrls = [];
       let thumbnailUrls = [];
 
-      // 가장 안정적인 방식: 사진을 먼저 업로드하고 URL을 받은 뒤 매물을 저장합니다.
+      // 1단계: 사진을 먼저 업로드합니다. 그래야 매물 저장 후 사진이 100% 붙습니다.
       if (selectedFiles.length > 0) {
-        const uploadedImages = await Promise.all(
-          selectedFiles.map(async (file, index) => {
-            const timeKey = `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
-            const safeImageName = file.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
-            const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
+        const uploadedUrls = [];
 
-            await uploadBytes(imageRef, file);
-            const imageUrl = await getDownloadURL(imageRef);
-            setUploadProgress(Math.round(((index + 1) / selectedFiles.length) * 100));
-            return imageUrl;
-          })
-        );
+        for (let index = 0; index < selectedFiles.length; index += 1) {
+          const file = selectedFiles[index];
+          const timeKey = `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+          const safeImageName = file.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+          const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
 
-        imageUrls = uploadedImages;
-        thumbnailUrls = uploadedImages;
+          await uploadBytes(imageRef, file);
+          const imageUrl = await getDownloadURL(imageRef);
+          uploadedUrls.push(imageUrl);
+          setUploadProgress(Math.round(((index + 1) / selectedFiles.length) * 100));
+        }
+
+        imageUrls = uploadedUrls;
+        thumbnailUrls = uploadedUrls;
       }
 
       const isAuction = listingForm.saleType === 'auction';
       const startPrice = Number(listingForm.auctionStartPrice || 0);
+      const auctionSchedule = isAuction ? makeAuctionSchedule(listingForm.auctionStartDate) : { auctionStartAt: null, auctionEndsAt: null };
 
+      // 2단계: 사진 URL을 포함해서 매물을 저장합니다.
       const listingDocRef = await addDoc(collection(db, 'listings'), {
         companyId: currentCompany.id,
         authUserId: currentUser.uid,
@@ -569,8 +590,9 @@ export default function App() {
         currentBid: isAuction ? startPrice : null,
         bidUnit: isAuction ? Number(listingForm.bidUnit || 0) : null,
         buyNowPrice: isAuction && listingForm.buyNowPrice ? Number(listingForm.buyNowPrice) : null,
-        auctionStartAt: isAuction ? listingForm.auctionStartAt : null,
-        auctionEndsAt: isAuction ? listingForm.auctionEndsAt : null,
+        auctionStartDate: isAuction ? listingForm.auctionStartDate : null,
+        auctionStartAt: isAuction ? auctionSchedule.auctionStartAt : null,
+        auctionEndsAt: isAuction ? auctionSchedule.auctionEndsAt : null,
         auctionDesc: isAuction ? listingForm.auctionDesc : '',
         bidCount: isAuction ? 0 : null,
         highestBidderId: '',
@@ -595,10 +617,10 @@ export default function App() {
         });
       }
 
+      // 3단계: 모든 저장이 끝난 뒤 이동합니다.
       setListingForm(initialForm);
       setImageFiles([]);
-      setNotice('매물 등록이 완료되었습니다. 내 매물관리로 이동합니다.');
-      window.alert('매물 등록 완료! 내 매물관리로 이동합니다.');
+      setNotice('매물 등록이 완료되었습니다. 관리자 승인 후 공개됩니다.');
       setActiveTab('dashboard');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
@@ -633,6 +655,7 @@ export default function App() {
       auctionStartPrice: item.auctionStartPrice || '',
       buyNowPrice: item.buyNowPrice || '',
       bidUnit: item.bidUnit || '',
+      auctionStartDate: item.auctionStartDate || '',
       auctionStartAt: item.auctionStartAt || '',
       auctionEndsAt: item.auctionEndsAt || '',
       auctionDesc: item.auctionDesc || '',
@@ -675,8 +698,10 @@ export default function App() {
         updateData.price = Number(editForm.auctionStartPrice || 0);
         updateData.buyNowPrice = editForm.buyNowPrice ? Number(editForm.buyNowPrice) : null;
         updateData.bidUnit = Number(editForm.bidUnit || 0);
-        updateData.auctionStartAt = editForm.auctionStartAt;
-        updateData.auctionEndsAt = editForm.auctionEndsAt;
+        updateData.auctionStartDate = editForm.auctionStartDate;
+        const auctionSchedule = makeAuctionSchedule(editForm.auctionStartDate);
+        updateData.auctionStartAt = auctionSchedule.auctionStartAt;
+        updateData.auctionEndsAt = auctionSchedule.auctionEndsAt;
         updateData.auctionDesc = editForm.auctionDesc;
       } else {
         updateData.price = Number(editForm.price || 0);
@@ -1329,24 +1354,16 @@ export default function App() {
                               placeholder="입찰 단위 (만원) 예: 10"
                               type="number"
                             />
-                            <div className="two-col">
-                              <div>
-                                <div className="list-meta" style={{ marginBottom: 6 }}>경매 시작시간</div>
-                                <input
-                                  className="field"
-                                  value={listingForm.auctionStartAt}
-                                  onChange={(e) => setListingForm({ ...listingForm, auctionStartAt: e.target.value })}
-                                  type="datetime-local"
-                                />
-                              </div>
-                              <div>
-                                <div className="list-meta" style={{ marginBottom: 6 }}>경매 종료시간</div>
-                                <input
-                                  className="field"
-                                  value={listingForm.auctionEndsAt}
-                                  onChange={(e) => setListingForm({ ...listingForm, auctionEndsAt: e.target.value })}
-                                  type="datetime-local"
-                                />
+                            <div>
+                              <div className="list-meta" style={{ marginBottom: 6 }}>경매 시작날짜</div>
+                              <input
+                                className="field"
+                                value={listingForm.auctionStartDate}
+                                onChange={(e) => setListingForm({ ...listingForm, auctionStartDate: e.target.value })}
+                                type="date"
+                              />
+                              <div className="list-meta" style={{ marginTop: 8, lineHeight: 1.6 }}>
+                                경매는 선택한 날짜 낮 12시부터 자동 시작되며 72시간 동안 진행됩니다.
                               </div>
                             </div>
                             <textarea
@@ -1465,9 +1482,10 @@ export default function App() {
                                       <input className="field" value={editForm.buyNowPrice} onChange={(e) => setEditForm({ ...editForm, buyNowPrice: e.target.value })} placeholder="즉시구매가" type="number" />
                                     </div>
                                     <input className="field" value={editForm.bidUnit} onChange={(e) => setEditForm({ ...editForm, bidUnit: e.target.value })} placeholder="입찰 단위" type="number" />
-                                    <div className="two-col">
-                                      <input className="field" value={editForm.auctionStartAt} onChange={(e) => setEditForm({ ...editForm, auctionStartAt: e.target.value })} type="datetime-local" />
-                                      <input className="field" value={editForm.auctionEndsAt} onChange={(e) => setEditForm({ ...editForm, auctionEndsAt: e.target.value })} type="datetime-local" />
+                                    <div>
+                                      <div className="list-meta" style={{ marginBottom: 6 }}>경매 시작날짜</div>
+                                      <input className="field" value={editForm.auctionStartDate} onChange={(e) => setEditForm({ ...editForm, auctionStartDate: e.target.value })} type="date" />
+                                      <div className="list-meta" style={{ marginTop: 8 }}>선택한 날짜 낮 12시부터 72시간 진행됩니다.</div>
                                     </div>
                                     <textarea className="textarea" value={editForm.auctionDesc} onChange={(e) => setEditForm({ ...editForm, auctionDesc: e.target.value })} placeholder="경매 설명" />
                                   </div>
