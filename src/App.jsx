@@ -149,7 +149,17 @@ function ListingCard({ item, isAdmin, onDelete }) {
   return (
     <div className="listing-card">
       <div className="listing-image">
-        {item.imageUrls?.[0] ? <img src={item.imageUrls[0]} alt={item.title} /> : '대표 이미지'}
+        <img
+  src={item.imageUrls?.[0]}
+  alt={item.title}
+  loading="lazy"
+  style={{
+    width: '100%',
+    height: 180,
+    objectFit: 'cover',
+    borderRadius: 12
+  }}
+/>
       </div>
       <div className="listing-body">
         <div className="listing-topline">
