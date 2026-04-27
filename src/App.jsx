@@ -1422,7 +1422,7 @@ export default function App() {
                             사진 압축과 업로드를 진행 중입니다. 완료되면 자동으로 내 매물관리로 이동합니다.
                           </div>
                         </div>
-                      )
+                      )}
                     </form>
                     <div className="glass-card">
                       <h3 className="flow-title">등록 안내</h3>
