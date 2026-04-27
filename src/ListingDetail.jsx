@@ -78,6 +78,16 @@ export default function ListingDetail() {
       return;
     }
 
+    if (item?.auctionEndsAt && new Date(item.auctionEndsAt).getTime() <= Date.now()) {
+      setNotice('이미 종료된 경매입니다.');
+      return;
+    }
+
+    if (item?.authUserId === user.uid) {
+      setNotice('본인이 등록한 경매에는 입찰할 수 없습니다.');
+      return;
+    }
+
     const bidNumber = Number(bidAmount);
     if (!bidNumber) {
       setNotice('입찰 금액을 입력해주세요.');
@@ -93,6 +103,15 @@ export default function ListingDetail() {
         if (!snap.exists()) throw new Error('매물을 찾을 수 없습니다.');
 
         const data = snap.data();
+
+        if (data.auctionEndsAt && new Date(data.auctionEndsAt).getTime() <= Date.now()) {
+          throw new Error('이미 종료된 경매입니다.');
+        }
+
+        if (data.authUserId === user.uid) {
+          throw new Error('본인이 등록한 경매에는 입찰할 수 없습니다.');
+        }
+
         const current = Number(data.currentBid || data.auctionStartPrice || 0);
         const min = current + Number(data.bidUnit || 1);
 
@@ -125,6 +144,9 @@ export default function ListingDetail() {
   }
 
   const isAuction = item.saleType === 'auction';
+  const isAuctionEnded = item.auctionEndsAt
+    ? new Date(item.auctionEndsAt).getTime() <= Date.now()
+    : false;
 
   return (
     <div style={{ padding: 40, background: '#0a0a0a', color: '#fff', minHeight: '100vh' }}>
@@ -167,7 +189,7 @@ export default function ListingDetail() {
       )}
 
       <h2 style={{ color: '#ef4444', marginTop: 30 }}>
-        {isAuction ? '비공개 경매 진행 중' : `판매가 ${item.price}만원`}
+        {isAuction ? (isAuctionEnded ? '경매 종료' : '비공개 경매 진행 중') : `판매가 ${item.price}만원`}
       </h2>
 
       <div style={{ lineHeight: 1.8 }}>
@@ -175,7 +197,7 @@ export default function ListingDetail() {
         <p>지역: {item.location || '-'}</p>
         <p>마스트: {item.mast || '-'}</p>
         <p>가동시간: {item.hours || '-'}</p>
-        <p>배터리/옵션: {item.battery || '-'}</p>
+        <p>배터리/옵션: {item.battery || '-'} {item.option ? `· ${item.option}` : ''}</p>
         <p>{item.description}</p>
       </div>
 
@@ -187,20 +209,36 @@ export default function ListingDetail() {
           <p>경매 종료: {item.auctionEndsAt || '미정'}</p>
           <p style={{ color: '#fca5a5', fontWeight: 800 }}>남은시간: {getTimeLeftText(item.auctionEndsAt)}</p>
 
-          <input
-            value={bidAmount}
-            onChange={(e) => setBidAmount(e.target.value)}
-            placeholder="입찰 금액 입력 (만원)"
-            type="number"
-            style={{ width: '100%', marginTop: 12, padding: 15, borderRadius: 12, background: '#050505', color: '#fff', border: '1px solid #333' }}
-          />
+          {!isAuctionEnded ? (
+            <>
+              <input
+                value={bidAmount}
+                onChange={(e) => setBidAmount(e.target.value)}
+                placeholder="입찰 금액 입력 (만원)"
+                type="number"
+                style={{ width: '100%', marginTop: 12, padding: 15, borderRadius: 12, background: '#050505', color: '#fff', border: '1px solid #333' }}
+              />
 
-          <button
-            onClick={handleBid}
-            style={{ width: '100%', marginTop: 12, padding: 16, borderRadius: 14, background: '#dc2626', color: '#fff', border: 'none', fontWeight: 900 }}
-          >
-            입찰하기
-          </button>
+              <button
+                onClick={handleBid}
+                style={{ width: '100%', marginTop: 12, padding: 16, borderRadius: 14, background: '#dc2626', color: '#fff', border: 'none', fontWeight: 900 }}
+              >
+                입찰하기
+              </button>
+            </>
+          ) : (
+            <div style={{
+              marginTop: 16,
+              padding: 16,
+              borderRadius: 14,
+              background: 'rgba(239,68,68,0.15)',
+              color: '#fca5a5',
+              fontWeight: 900,
+              textAlign: 'center'
+            }}>
+              경매가 종료되었습니다.
+            </div>
+          )}
         </div>
       )}
 
