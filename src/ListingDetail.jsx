@@ -10,6 +10,8 @@ import {
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from './firebase';
 
+const ADMIN_EMAIL = 'best@example.com';
+
 function getTimeLeftText(endTime) {
   if (!endTime) return '종료일 미정';
 
@@ -33,12 +35,29 @@ export default function ListingDetail() {
   const { id } = useParams();
   const [item, setItem] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [currentMember, setCurrentMember] = useState(null);
   const [bidAmount, setBidAmount] = useState('');
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user || null);
+
+      if (!user) {
+        setCurrentMember(null);
+        return;
+      }
+
+      const memberRef = doc(db, 'companies', user.uid);
+      const unsubMember = onSnapshot(memberRef, (snap) => {
+        if (snap.exists()) {
+          setCurrentMember({ id: snap.id, ...snap.data() });
+        } else {
+          setCurrentMember(null);
+        }
+      });
+
+      return () => unsubMember();
     });
 
     return () => unsubAuth();
@@ -55,6 +74,10 @@ export default function ListingDetail() {
 
     return () => unsub();
   }, [id]);
+
+  const isAdmin = currentUser?.email === ADMIN_EMAIL;
+  const isSeller = currentMember?.memberType === 'seller' || isAdmin;
+  const canSeeDealerPrice = isSeller && item?.dealerPrice;
 
   const handleBid = async () => {
     if (!currentUser) {
@@ -242,7 +265,14 @@ export default function ListingDetail() {
         }}>
           <h2 style={{ color: '#ef4444', marginTop: 0 }}>현재 입찰가 {currentPrice}만원</h2>
 
+          {canSeeDealerPrice && (
+            <h3 style={{ color: '#facc15' }}>
+              업체가 {item.dealerPrice}만원
+            </h3>
+          )}
+
           <p>시작가: {item.auctionStartPrice || '-'}만원</p>
+          <p>즉시구매가: {item.buyNowPrice || '-'}만원</p>
           <p>입찰 단위: {item.bidUnit || '-'}만원</p>
           <p>입찰 수: {item.bidCount || 0}회</p>
           <p>경매 시작: {item.auctionStartAt || '미정'}</p>
@@ -308,7 +338,13 @@ export default function ListingDetail() {
         </div>
       ) : (
         <>
-          <h2 style={{ color: '#ef4444' }}>{item.price}만원</h2>
+          <h2 style={{ color: '#ef4444' }}>판매가 {item.price}만원</h2>
+
+          {canSeeDealerPrice && (
+            <h3 style={{ color: '#facc15' }}>
+              업체가 {item.dealerPrice}만원
+            </h3>
+          )}
         </>
       )}
 
