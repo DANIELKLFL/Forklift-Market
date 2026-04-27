@@ -38,6 +38,7 @@ const initialForm = {
   mast: '',
   hours: '',
   battery: '',
+  option: '',
   price: '',
   dealerPrice: '',
   location: '',
@@ -518,6 +519,7 @@ export default function App() {
         mast: listingForm.mast,
         hours: listingForm.hours,
         battery: listingForm.battery,
+        option: listingForm.option || '',
         price: isAuction ? startPrice : Number(listingForm.price || 0),
         location: listingForm.location,
         description: listingForm.description,
@@ -1186,33 +1188,98 @@ export default function App() {
 
                       <input className="field" value={listingForm.title} onChange={(e) => setListingForm({ ...listingForm, title: e.target.value })} placeholder="모델명 입력" />
                       <div className="two-col">
-                        <input className="field" value={listingForm.brand} onChange={(e) => setListingForm({ ...listingForm, brand: e.target.value })} placeholder="브랜드" />
-                        <input className="field" value={listingForm.ton} onChange={(e) => setListingForm({ ...listingForm, ton: e.target.value })} placeholder="톤수" />
+                        <input
+                          className="field"
+                          value={listingForm.brand}
+                          onChange={(e) => setListingForm({ ...listingForm, brand: e.target.value.replace(/[^가-힣ㄱ-ㅎㅏ-ㅣ\s]/g, '') })}
+                          placeholder="브랜드 (한글만 입력)"
+                        />
+                        <input
+                          className="field"
+                          value={listingForm.ton}
+                          onChange={(e) => setListingForm({ ...listingForm, ton: e.target.value.replace(/[^0-9.톤tT\-+\s]/g, '') })}
+                          placeholder="톤수 (예: 2.5톤)"
+                        />
                       </div>
                       <div className="two-col">
-                        <input className="field" value={listingForm.year} onChange={(e) => setListingForm({ ...listingForm, year: e.target.value })} placeholder="연식" />
-                        <input className="field" value={listingForm.mast} onChange={(e) => setListingForm({ ...listingForm, mast: e.target.value })} placeholder="마스트 높이" />
+                        <input
+                          className="field"
+                          value={listingForm.year}
+                          onChange={(e) => setListingForm({ ...listingForm, year: e.target.value.replace(/[^0-9]/g, '') })}
+                          placeholder="연식 (숫자만 입력, 예: 2018)"
+                          inputMode="numeric"
+                        />
+                        <select
+                          className="select"
+                          value={listingForm.mast}
+                          onChange={(e) => setListingForm({ ...listingForm, mast: e.target.value })}
+                        >
+                          <option value="">마스트 선택</option>
+                          <option value="2단 3M">2단 3M</option>
+                          <option value="2단 3.3M">2단 3.3M</option>
+                          <option value="2단 4M">2단 4M</option>
+                          <option value="3단 4M">3단 4M</option>
+                          <option value="3단 4.3M">3단 4.3M</option>
+                          <option value="3단 4.5M">3단 4.5M</option>
+                          <option value="3단 5M">3단 5M</option>
+                          <option value="기타">기타</option>
+                        </select>
                       </div>
                       <div className="two-col">
-                        <input className="field" value={listingForm.hours} onChange={(e) => setListingForm({ ...listingForm, hours: e.target.value })} placeholder="가동시간" />
-                        <input className="field" value={listingForm.location} onChange={(e) => setListingForm({ ...listingForm, location: e.target.value })} placeholder="지역" />
+                        <input
+                          className="field"
+                          value={listingForm.hours}
+                          onChange={(e) => setListingForm({ ...listingForm, hours: e.target.value.replace(/[^0-9]/g, '') })}
+                          placeholder="가동시간 (숫자만 입력)"
+                          inputMode="numeric"
+                        />
+                        <input
+                          className="field"
+                          value={listingForm.location}
+                          onChange={(e) => setListingForm({ ...listingForm, location: e.target.value.replace(/[^가-힣ㄱ-ㅎㅏ-ㅣ\s]/g, '') })}
+                          placeholder="지역 (한글만 입력)"
+                        />
                       </div>
-                      <input className="field" value={listingForm.battery} onChange={(e) => setListingForm({ ...listingForm, battery: e.target.value })} placeholder="배터리 상태 / 주요 옵션" />
+                      <div className="two-col">
+                        <select
+                          className="select"
+                          value={listingForm.battery}
+                          onChange={(e) => setListingForm({ ...listingForm, battery: e.target.value })}
+                        >
+                          <option value="">배터리 상태 선택</option>
+                          <option value="신품">신품</option>
+                          <option value="A급">A급</option>
+                          <option value="B급">B급</option>
+                          <option value="C급">C급</option>
+                          <option value="폐품">폐품</option>
+                        </select>
+                        <select
+                          className="select"
+                          value={listingForm.option || ''}
+                          onChange={(e) => setListingForm({ ...listingForm, option: e.target.value })}
+                        >
+                          <option value="">주요옵션 선택</option>
+                          <option value="사이드쉬프트">사이드쉬프트</option>
+                          <option value="포크포지셔너(양개)">포크포지셔너(양개)</option>
+                          <option value="포크포지셔너(편개)">포크포지셔너(편개)</option>
+                          <option value="복합형">복합형</option>
+                        </select>
+                      </div>
 
                       {listingForm.saleType === 'normal' ? (
                         <div className="grid-gap">
                           <input
                             className="field"
                             value={listingForm.price}
-                            onChange={(e) => setListingForm({ ...listingForm, price: e.target.value })}
-                            placeholder="소비자 판매가 입력 (만원 단위)"
+                            onChange={(e) => setListingForm({ ...listingForm, price: e.target.value.replace(/[^0-9]/g, '') })}
+                            placeholder="소비자 판매가 입력 (만원 단위, 숫자만)"
                             type="number"
                           />
                           <input
                             className="field"
                             value={listingForm.dealerPrice}
-                            onChange={(e) => setListingForm({ ...listingForm, dealerPrice: e.target.value })}
-                            placeholder="업체가 입력 (만원 단위, 업체회원/관리자만 노출)"
+                            onChange={(e) => setListingForm({ ...listingForm, dealerPrice: e.target.value.replace(/[^0-9]/g, '') })}
+                            placeholder="업체가 입력 (만원 단위, 숫자만)"
                             type="number"
                           />
                         </div>
@@ -1239,8 +1306,8 @@ export default function App() {
                             <input
                               className="field"
                               value={listingForm.dealerPrice}
-                              onChange={(e) => setListingForm({ ...listingForm, dealerPrice: e.target.value })}
-                              placeholder="업체가 입력 (만원 단위, 업체회원/관리자만 노출)"
+                              onChange={(e) => setListingForm({ ...listingForm, dealerPrice: e.target.value.replace(/[^0-9]/g, '') })}
+                            placeholder="업체가 입력 (만원 단위, 숫자만)"
                               type="number"
                             />
                             <input
