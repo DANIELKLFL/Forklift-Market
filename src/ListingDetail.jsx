@@ -262,12 +262,15 @@ export default function ListingDetail() {
       <h1>{item.title}</h1>
 
       {item.imageUrls?.length > 0 && (
-        <div style={{
-          display: 'grid',
-          gap: 14,
-          marginTop: 20,
-          maxWidth: 900
-        }}>
+  <div
+    style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+      gap: 12,
+      marginTop: 20,
+      maxWidth: 900
+    }}
+  >
           {item.imageUrls.map((url, index) => (
             <img
               key={`${url}-${index}`}
