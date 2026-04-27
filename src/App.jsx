@@ -437,6 +437,20 @@ export default function App() {
   };
 
   const deleteListing = async (id) => {
+    const targetListing = listings.find((item) => item.id === id);
+
+    if (!targetListing) {
+      setNotice('삭제할 매물을 찾을 수 없습니다.');
+      return;
+    }
+
+    const isOwner = currentUser && targetListing.authUserId === currentUser.uid;
+
+    if (!isAdmin && !isOwner) {
+      setNotice('본인 매물 또는 관리자만 삭제할 수 있습니다.');
+      return;
+    }
+
     const ok = window.confirm('이 매물을 완전히 삭제할까요? 삭제 후에는 복구할 수 없습니다.');
     if (!ok) return;
 
@@ -879,9 +893,8 @@ export default function App() {
                               {item.status === 'active' ? '노출중' : item.status === 'pending' ? '승인대기' : item.status === 'sold' ? '판매완료' : '반려'}
                             </div>
                             <div className="small-actions" style={{ marginTop: 10 }}>
-  <button onClick={() => updateMyListingStatus(item.id, 'sold')}>판매완료</button>
-  <button onClick={() => deleteListing(item.id)}>삭제</button>
-</div>
+                              <button onClick={() => updateMyListingStatus(item.id, 'sold')}>판매완료</button>
+                            </div>
                           </div>
                         </div>
                       )) : <div className="glass-card">현재 등록된 매물이 없습니다.</div>}
