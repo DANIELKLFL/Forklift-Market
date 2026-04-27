@@ -535,7 +535,7 @@ export default function App() {
       const isAuction = listingForm.saleType === 'auction';
       const startPrice = Number(listingForm.auctionStartPrice || 0);
       const selectedFiles = imageFiles.slice(0, 5);
-      const totalUploadSteps = Math.max(1, selectedFiles.length * 2);
+      const totalUploadSteps = Math.max(1, selectedFiles.length);
       let finishedUploadSteps = 0;
       const updateProgress = () => {
         finishedUploadSteps += 1;
@@ -595,22 +595,17 @@ export default function App() {
         try {
           const uploadedImages = await Promise.all(
             selectedFiles.map(async (file) => {
-              const compressedFile = await compressImageFile(file, 1200, 0.72);
-              const thumbnailFile = await compressImageFile(file, 420, 0.62);
+              const optimizedFile = await compressImageFile(file, 1000, 0.68);
 
               const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-              const safeImageName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
-              const safeThumbName = thumbnailFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+              const safeImageName = optimizedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
 
               const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
-              const thumbRef = ref(storage, `listings/${currentUser.uid}/thumbs/${timeKey}-${safeThumbName}`);
 
-              const imageUrl = await uploadFileWithProgress(imageRef, compressedFile, () => {});
-              updateProgress();
-              const thumbnailUrl = await uploadFileWithProgress(thumbRef, thumbnailFile, () => {});
+              const imageUrl = await uploadFileWithProgress(imageRef, optimizedFile, () => {});
               updateProgress();
 
-              return { imageUrl, thumbnailUrl };
+              return { imageUrl, thumbnailUrl: imageUrl };
             })
           );
 
