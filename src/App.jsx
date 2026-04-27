@@ -906,6 +906,19 @@ export default function App() {
                   <div className="logo-sub">중고지게차 매물 플랫폼</div>
                 </div>
                 <nav className="nav">
+                  <div style={{
+                    padding: '11px 18px',
+                    borderRadius: 16,
+                    background: 'rgba(239,68,68,0.18)',
+                    border: '1px solid rgba(239,68,68,0.35)',
+                    color: '#fca5a5',
+                    fontSize: 15,
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
+                    방문자 {visitorCount.toLocaleString()}명
+                  </div>
                   {[
                     ['home', '홈'],
                     ['market', '매물보기'],
@@ -931,20 +944,7 @@ export default function App() {
                   <div className="container hero-grid">
                     <div>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                        <div style={{
-                          padding: '9px 14px',
-                          borderRadius: 999,
-                          background: 'rgba(239,68,68,0.14)',
-                          border: '1px solid rgba(239,68,68,0.28)',
-                          color: '#fca5a5',
-                          fontSize: 13,
-                          fontWeight: 900
-                        }}>
-                          방문자 {visitorCount.toLocaleString()}명
-                        </div>
                         <div className="pill">업체 회원가입 · 매물 등록 · 경매 입찰</div>
-                      </div>
                         <div style={{
                           padding: '9px 14px',
                           borderRadius: 999,
