@@ -25,6 +25,7 @@ import ListingDetail from './ListingDetail';
 const ADMIN_EMAILS = ['best@example.com'];
 const DEFAULT_LISTING_LIMIT = 4;
 const MAX_LISTING_LIMIT = 20;
+const LISTINGS_PAGE_SIZE = 12;
 
 const initialForm = {
   saleType: 'normal',
@@ -208,6 +209,8 @@ export default function App() {
   const [listingForm, setListingForm] = useState(initialForm);
   const [notice, setNotice] = useState('');
   const [imageFiles, setImageFiles] = useState([]);
+  const [marketVisibleCount, setMarketVisibleCount] = useState(LISTINGS_PAGE_SIZE);
+  const [auctionVisibleCount, setAuctionVisibleCount] = useState(LISTINGS_PAGE_SIZE);
 
   const isAdmin = currentUser?.email === 'best@example.com';
 
@@ -294,6 +297,16 @@ export default function App() {
     });
   }, [auctionListings, keyword, brandFilter, tonFilter]);
 
+  const displayedMarketListings = useMemo(
+    () => filteredListings.slice(0, marketVisibleCount),
+    [filteredListings, marketVisibleCount]
+  );
+
+  const displayedAuctionListings = useMemo(
+    () => filteredAuctionListings.slice(0, auctionVisibleCount),
+    [filteredAuctionListings, auctionVisibleCount]
+  );
+
   const featuredListings = useMemo(() => visibleListings.filter((item) => item.featured).slice(0, 3), [visibleListings]);
   const myListings = useMemo(() => currentCompany ? listings.filter((item) => item.companyId === currentCompany.id || item.authUserId === currentUser?.uid) : [], [listings, currentCompany, currentUser]);
 
@@ -311,6 +324,11 @@ export default function App() {
   const getCompanyLimit = (company) => {
     return Number(company.listingLimit || DEFAULT_LISTING_LIMIT);
   };
+
+  useEffect(() => {
+    setMarketVisibleCount(LISTINGS_PAGE_SIZE);
+    setAuctionVisibleCount(LISTINGS_PAGE_SIZE);
+  }, [keyword, brandFilter, tonFilter]);
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -762,7 +780,7 @@ export default function App() {
                   <SectionTitle eyebrow="Marketplace" title="전체 매물" subtitle="일반 판매 매물만 브랜드, 톤수, 키워드로 검색할 수 있습니다." />
                   {renderFilterBox()}
                   <div className="listing-grid">
-                    {filteredListings.length ? filteredListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
+                    {filteredListings.length ? displayedMarketListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
                   </div>
                 </div>
               </section>
@@ -774,10 +792,26 @@ export default function App() {
                   <SectionTitle eyebrow="Auction Market" title="경매물품" subtitle="입찰 방식으로 진행되는 중고지게차 경매 물품입니다." />
                   {renderFilterBox()}
                   <div className="listing-grid">
-                    {filteredAuctionListings.length ? filteredAuctionListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} />) : <div className="glass-card">현재 등록된 경매물품이 없습니다.</div>}
+                    {filteredAuctionListings.length ? displayedAuctionListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} />) : <div className="glass-card">현재 등록된 경매물품이 없습니다.</div>}
                   </div>
                 </div>
               </section>
+            )}
+
+            {activeTab === 'market' && filteredListings.length > marketVisibleCount && (
+              <div className="container" style={{ paddingBottom: 36, textAlign: 'center' }}>
+                <button className="btn btn-primary" onClick={() => setMarketVisibleCount((prev) => prev + LISTINGS_PAGE_SIZE)}>
+                  더보기 ({displayedMarketListings.length}/{filteredListings.length})
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'auction' && filteredAuctionListings.length > auctionVisibleCount && (
+              <div className="container" style={{ paddingBottom: 36, textAlign: 'center' }}>
+                <button className="btn btn-primary" onClick={() => setAuctionVisibleCount((prev) => prev + LISTINGS_PAGE_SIZE)}>
+                  더보기 ({displayedAuctionListings.length}/{filteredAuctionListings.length})
+                </button>
+              </div>
             )}
 
             {activeTab === 'seller' && (
