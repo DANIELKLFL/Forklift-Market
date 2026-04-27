@@ -13,6 +13,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  limit,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -233,7 +234,11 @@ export default function App() {
       setCompanies(rows);
     });
 
-    const listingsQuery = query(collection(db, 'listings'), orderBy('createdAt', 'desc'));
+    const listingsQuery = query(
+      collection(db, 'listings'),
+      orderBy('createdAt', 'desc'),
+      limit(60)
+    );
     const unsubListings = onSnapshot(listingsQuery, (snapshot) => {
       const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setListings(rows);
