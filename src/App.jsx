@@ -572,46 +572,40 @@ export default function App() {
         });
       }
 
-      // 2단계: 사진 업로드까지 완료한 뒤 매물에 붙입니다. 안정형 방식입니다.
+      // 2단계: 사진은 뒤에서 자동 업로드합니다. 사용자는 바로 내 매물관리로 이동합니다.
       if (selectedFiles.length > 0) {
-        try {
-          const uploadedImages = await Promise.all(
-            selectedFiles.map(async (file) => {
-              const optimizedFile = await compressImageFile(file, 1000, 0.68);
+        Promise.all(
+          selectedFiles.map(async (file) => {
+            const optimizedFile = await compressImageFile(file, 1000, 0.68);
+            const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const safeImageName = optimizedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+            const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
 
-              const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-              const safeImageName = optimizedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
-
-              const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
-
-              await uploadBytes(imageRef, optimizedFile);
-              const imageUrl = await getDownloadURL(imageRef);
-              updateProgress();
-
-              return { imageUrl, thumbnailUrl: imageUrl };
-            })
-          );
-
-          await updateDoc(doc(db, 'listings', listingDocRef.id), {
-            imageUrls: uploadedImages.map((image) => image.imageUrl),
-            thumbnailUrls: uploadedImages.map((image) => image.thumbnailUrl),
-            imageUploadStatus: 'done',
-            imageUploadedAt: serverTimestamp(),
+            await uploadBytes(imageRef, optimizedFile);
+            const imageUrl = await getDownloadURL(imageRef);
+            return { imageUrl, thumbnailUrl: imageUrl };
+          })
+        )
+          .then(async (uploadedImages) => {
+            await updateDoc(doc(db, 'listings', listingDocRef.id), {
+              imageUrls: uploadedImages.map((image) => image.imageUrl),
+              thumbnailUrls: uploadedImages.map((image) => image.thumbnailUrl),
+              imageUploadStatus: 'done',
+              imageUploadedAt: serverTimestamp(),
+            });
+          })
+          .catch(async (error) => {
+            console.error('사진 업로드 오류:', error);
+            await updateDoc(doc(db, 'listings', listingDocRef.id), {
+              imageUploadStatus: 'error',
+            });
           });
-        } catch (error) {
-          console.error('사진 업로드 오류:', error);
-          await updateDoc(doc(db, 'listings', listingDocRef.id), {
-            imageUploadStatus: 'error',
-          });
-          throw new Error('매물 정보는 저장됐지만 사진 업로드에 실패했습니다. 사진 용량을 줄여 다시 시도해주세요.');
-        }
       }
 
       setListingForm(initialForm);
       setImageFiles([]);
-      setUploadProgress(100);
-      setNotice(selectedFiles.length ? '사진 업로드까지 완료되었습니다. 내 매물관리로 이동합니다.' : '매물 등록이 완료되었습니다. 내 매물관리로 이동합니다.');
-      window.alert(selectedFiles.length ? '사진 업로드까지 완료되었습니다! 내 매물관리로 이동합니다.' : '매물 등록 완료! 내 매물관리로 이동합니다.');
+      setNotice(selectedFiles.length ? '매물 등록 완료! 사진은 뒤에서 자동 업로드됩니다.' : '매물 등록 완료! 내 매물관리로 이동합니다.');
+      window.alert(selectedFiles.length ? '매물 등록 완료! 사진은 뒤에서 자동 업로드됩니다.' : '매물 등록 완료! 내 매물관리로 이동합니다.');
       setActiveTab('dashboard');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
@@ -1388,7 +1382,7 @@ export default function App() {
                         </div>
                       ) : null}
                       <button className="btn btn-primary" disabled={uploading} type="submit">
-                        {uploading ? '사진 압축 및 업로드 중입니다. 잠시만 기다려주세요...' : '매물 등록 신청'}
+                        {uploading ? '매물 등록 중입니다...' : '매물 등록 신청'}
                       </button>
 
                       {uploading && (
