@@ -1053,11 +1053,34 @@ export default function App() {
               .hero-grid, .feature-grid, .listing-grid, .dashboard-grid, .three-col, .company-card { grid-template-columns: 1fr 1fr; }
             }
             @media (max-width: 720px) {
+              .container { width: min(100% - 20px, 1200px); }
+              .header-inner { padding: 10px 0; gap: 8px; }
+              .logo { font-size: 22px; }
+              .logo-sub { font-size: 11px; }
+              .nav { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+              .nav button { white-space: nowrap; padding: 9px 12px; border-radius: 12px; font-size: 13px; }
+              .hero { padding: 28px 0 22px; }
               .hero-grid, .feature-grid, .listing-grid, .dashboard-grid, .three-col, .two-col, .filter-grid, .company-card { grid-template-columns: 1fr; }
-              .listing-footer, .list-item { flex-direction: column; align-items: flex-start; }
+              .hero h1 { font-size: 34px; }
+              .hero p { font-size: 14px; line-height: 1.65; }
+              .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+              .section { padding: 24px 0; }
+              .section-title { font-size: 28px; }
+              .glass-card, .dark-card, .search-panel, .search-panel-inner { border-radius: 20px; padding: 16px; }
+              .listing-grid { gap: 14px; }
+              .listing-card { border-radius: 20px; }
+              .listing-image { height: 150px; }
+              .listing-body { padding: 14px; }
+              .listing-title { font-size: 20px; margin-top: 10px; }
+              .listing-spec-grid { gap: 8px; margin-top: 12px; }
+              .spec-box { padding: 10px; border-radius: 14px; }
+              .price-value { font-size: 24px; }
+              .listing-footer, .list-item { flex-direction: column; align-items: stretch; }
+              .listing-footer .btn, .small-actions button { width: 100%; }
               .limit-control { justify-content: flex-start; }
-              .section-title { font-size: 30px; }
-              .logo { font-size: 24px; }
+              .field, .select, .textarea { padding: 12px; border-radius: 13px; font-size: 14px; }
+              .btn { padding: 12px 15px; border-radius: 13px; }
+              .image-preview-grid { grid-template-columns: repeat(3, 1fr); }
             }
           `}</style>
 
