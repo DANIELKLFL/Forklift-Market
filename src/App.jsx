@@ -84,6 +84,56 @@ function getTimeLeftText(endTime) {
   return `${minutes}분 남음`;
 }
 
+async function compressImageFile(file, maxWidth = 1200, quality = 0.72) {
+  if (!file || !file.type.startsWith('image/')) return file;
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const img = new Image();
+
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const width = Math.round(img.width * scale);
+        const height = Math.round(img.height * scale);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              resolve(file);
+              return;
+            }
+
+            const compressedFile = new File(
+              [blob],
+              file.name.replace(/\.[^.]+$/, '.jpg'),
+              { type: 'image/jpeg' }
+            );
+
+            resolve(compressedFile);
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+
+      img.onerror = () => resolve(file);
+      img.src = event.target.result;
+    };
+
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
 function ListingCard({ item, isAdmin, onDelete }) {
   const navigate = useNavigate();
   const isAuction = item.saleType === 'auction';
@@ -354,9 +404,10 @@ export default function App() {
       if (imageFiles && imageFiles.length > 0) {
         imageUrls = await Promise.all(
           imageFiles.slice(0, 5).map(async (file) => {
-            const safeName = file.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+            const compressedFile = await compressImageFile(file);
+            const safeName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
             const imageRef = ref(storage, `listings/${currentUser.uid}/${Date.now()}-${safeName}`);
-            await uploadBytes(imageRef, file);
+            await uploadBytes(imageRef, compressedFile);
             return getDownloadURL(imageRef);
           })
         );
