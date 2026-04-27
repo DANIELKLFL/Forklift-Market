@@ -143,33 +143,26 @@ function ListingCard({ item, isAdmin, onDelete }) {
   const goToDetail = () => {
     navigate(`/listing/${item.id}`);
   };
-
   const isAuction = item.saleType === 'auction';
   const currentPrice = item.currentBid || item.auctionStartPrice || item.price;
-  const mainImage = item.imageUrls?.[0];
 
   return (
     <div className="listing-card">
       <div className="listing-image">
-        {mainImage ? (
+        {item.thumbnailUrls?.[0] || item.imageUrls?.[0] ? (
           <img
-            src={mainImage}
-            alt={item.title || '매물 이미지'}
+            src={item.thumbnailUrls?.[0] || item.imageUrls?.[0]}
+            alt={item.title}
             loading="lazy"
           />
-        ) : (
-          <div style={{ color: '#6b7280' }}>이미지 없음</div>
-        )}
+        ) : '대표 이미지'}
       </div>
-
       <div className="listing-body">
         <div className="listing-topline">
           <span className="badge">{isAuction ? '경매물품' : item.featured ? '추천매물' : '일반매물'}</span>
           <span className="seller-name">{item.sellerName || '업체명 없음'}</span>
         </div>
-
         <h3 className="listing-title">{item.title}</h3>
-
         <div className="listing-spec-grid">
           <div className="spec-box"><span>연식</span><strong>{item.year || '-'}</strong></div>
           <div className="spec-box"><span>마스트</span><strong>{item.mast || '-'}</strong></div>
@@ -189,7 +182,6 @@ function ListingCard({ item, isAdmin, onDelete }) {
             <div className="price-label">{isAuction ? '현재 입찰가' : '판매가'}</div>
             <div className="price-value">{currentPrice ? `${currentPrice}만원` : '-'}</div>
           </div>
-
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-light" onClick={goToDetail}>
               {isAuction ? '경매보기' : '상세보기'}
@@ -463,34 +455,34 @@ export default function App() {
 
     try {
       let imageUrls = [];
-let thumbnailUrls = [];
+      let thumbnailUrls = [];
 
-if (imageFiles && imageFiles.length > 0) {
-  const uploadedImages = await Promise.all(
-    imageFiles.slice(0, 5).map(async (file) => {
-      const compressedFile = await compressImageFile(file, 1200, 0.72);
-      const thumbnailFile = await compressImageFile(file, 420, 0.62);
+      if (imageFiles && imageFiles.length > 0) {
+        const uploadedImages = await Promise.all(
+          imageFiles.slice(0, 5).map(async (file) => {
+            const compressedFile = await compressImageFile(file, 1200, 0.72);
+            const thumbnailFile = await compressImageFile(file, 420, 0.62);
 
-      const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const safeImageName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
-      const safeThumbName = thumbnailFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+            const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const safeImageName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+            const safeThumbName = thumbnailFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
 
-      const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
-      const thumbRef = ref(storage, `listings/${currentUser.uid}/thumbs/${timeKey}-${safeThumbName}`);
+            const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
+            const thumbRef = ref(storage, `listings/${currentUser.uid}/thumbs/${timeKey}-${safeThumbName}`);
 
-      await uploadBytes(imageRef, compressedFile);
-      await uploadBytes(thumbRef, thumbnailFile);
+            await uploadBytes(imageRef, compressedFile);
+            await uploadBytes(thumbRef, thumbnailFile);
 
-      const imageUrl = await getDownloadURL(imageRef);
-      const thumbnailUrl = await getDownloadURL(thumbRef);
+            const imageUrl = await getDownloadURL(imageRef);
+            const thumbnailUrl = await getDownloadURL(thumbRef);
 
-      return { imageUrl, thumbnailUrl };
-    })
-  );
+            return { imageUrl, thumbnailUrl };
+          })
+        );
 
-  imageUrls = uploadedImages.map((item) => item.imageUrl);
-  thumbnailUrls = uploadedImages.map((item) => item.thumbnailUrl);
-}
+        imageUrls = uploadedImages.map((item) => item.imageUrl);
+        thumbnailUrls = uploadedImages.map((item) => item.thumbnailUrl);
+      }
 
       const isAuction = listingForm.saleType === 'auction';
       const startPrice = Number(listingForm.auctionStartPrice || 0);
@@ -524,8 +516,8 @@ if (imageFiles && imageFiles.length > 0) {
         highestBidderName: '',
         auctionStatus: isAuction ? 'scheduled' : null,
         imageUrls,
-thumbnailUrls,
-status: 'pending',
+        thumbnailUrls,
+        status: 'pending',
         featured: false,
         createdAt: serverTimestamp(),
       });
