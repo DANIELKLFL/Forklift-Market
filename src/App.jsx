@@ -459,7 +459,7 @@ export default function App() {
       const isAuction = listingForm.saleType === 'auction';
       const startPrice = Number(listingForm.auctionStartPrice || 0);
 
-      await addDoc(collection(db, 'listings'), {
+      const listingDocRef = await addDoc(collection(db, 'listings'), {
         companyId: currentCompany.id,
         authUserId: currentUser.uid,
         sellerName: currentCompany.companyName,
@@ -472,7 +472,6 @@ export default function App() {
         hours: listingForm.hours,
         battery: listingForm.battery,
         price: isAuction ? startPrice : Number(listingForm.price || 0),
-        dealerPrice: listingForm.dealerPrice ? Number(listingForm.dealerPrice) : null,
         location: listingForm.location,
         description: listingForm.description,
         saleType: listingForm.saleType,
@@ -493,6 +492,16 @@ export default function App() {
         featured: false,
         createdAt: serverTimestamp(),
       });
+
+      if (listingForm.dealerPrice) {
+        await setDoc(doc(db, 'dealerPrices', listingDocRef.id), {
+          listingId: listingDocRef.id,
+          companyId: currentCompany.id,
+          authUserId: currentUser.uid,
+          dealerPrice: Number(listingForm.dealerPrice),
+          createdAt: serverTimestamp(),
+        });
+      }
 
       setListingForm(initialForm);
       setImageFiles([]);
@@ -938,28 +947,82 @@ export default function App() {
                       <input className="field" value={listingForm.battery} onChange={(e) => setListingForm({ ...listingForm, battery: e.target.value })} placeholder="배터리 상태 / 주요 옵션" />
 
                       {listingForm.saleType === 'normal' ? (
-                        <>
-                          <input className="field" value={listingForm.price} onChange={(e) => setListingForm({ ...listingForm, price: e.target.value })} placeholder="소비자 판매가 입력 (만원 단위)" type="number" />
-                          <input className="field" value={listingForm.dealerPrice} onChange={(e) => setListingForm({ ...listingForm, dealerPrice: e.target.value })} placeholder="업체가 입력 (만원 단위, 업체회원/관리자만 노출)" type="number" />
-                        </>
+                        <div className="grid-gap">
+                          <input
+                            className="field"
+                            value={listingForm.price}
+                            onChange={(e) => setListingForm({ ...listingForm, price: e.target.value })}
+                            placeholder="소비자 판매가 입력 (만원 단위)"
+                            type="number"
+                          />
+                          <input
+                            className="field"
+                            value={listingForm.dealerPrice}
+                            onChange={(e) => setListingForm({ ...listingForm, dealerPrice: e.target.value })}
+                            placeholder="업체가 입력 (만원 단위, 업체회원/관리자만 노출)"
+                            type="number"
+                          />
+                        </div>
                       ) : (
                         <div className="glass-card" style={{ padding: 16 }}>
                           <h3 className="flow-title">경매 설정</h3>
                           <div className="grid-gap" style={{ marginTop: 14 }}>
                             <div className="two-col">
-                              <input className="field" value={listi
-                            <input className="field" value={listingForm.bidUnit} onChange={(e) => setListingForm({ ...listingForm, bidUnit: e.target.value })} placeholder="입찰 단위 (만원) 예: 10" type="number" />
+                              <input
+                                className="field"
+                                value={listingForm.auctionStartPrice}
+                                onChange={(e) => setListingForm({ ...listingForm, auctionStartPrice: e.target.value })}
+                                placeholder="시작가 (만원)"
+                                type="number"
+                              />
+                              <input
+                                className="field"
+                                value={listingForm.buyNowPrice}
+                                onChange={(e) => setListingForm({ ...listingForm, buyNowPrice: e.target.value })}
+                                placeholder="즉시구매가 (만원, 선택)"
+                                type="number"
+                              />
+                            </div>
+                            <input
+                              className="field"
+                              value={listingForm.dealerPrice}
+                              onChange={(e) => setListingForm({ ...listingForm, dealerPrice: e.target.value })}
+                              placeholder="업체가 입력 (만원 단위, 업체회원/관리자만 노출)"
+                              type="number"
+                            />
+                            <input
+                              className="field"
+                              value={listingForm.bidUnit}
+                              onChange={(e) => setListingForm({ ...listingForm, bidUnit: e.target.value })}
+                              placeholder="입찰 단위 (만원) 예: 10"
+                              type="number"
+                            />
                             <div className="two-col">
                               <div>
                                 <div className="list-meta" style={{ marginBottom: 6 }}>경매 시작시간</div>
-                                <input className="field" value={listingForm.auctionStartAt} onChange={(e) => setListingForm({ ...listingForm, auctionStartAt: e.target.value })} type="datetime-local" />
+                                <input
+                                  className="field"
+                                  value={listingForm.auctionStartAt}
+                                  onChange={(e) => setListingForm({ ...listingForm, auctionStartAt: e.target.value })}
+                                  type="datetime-local"
+                                />
                               </div>
                               <div>
                                 <div className="list-meta" style={{ marginBottom: 6 }}>경매 종료시간</div>
-                                <input className="field" value={listingForm.auctionEndsAt} onChange={(e) => setListingForm({ ...listingForm, auctionEndsAt: e.target.value })} type="datetime-local" />
+                                <input
+                                  className="field"
+                                  value={listingForm.auctionEndsAt}
+                                  onChange={(e) => setListingForm({ ...listingForm, auctionEndsAt: e.target.value })}
+                                  type="datetime-local"
+                                />
                               </div>
                             </div>
-                            <textarea className="textarea" value={listingForm.auctionDesc} onChange={(e) => setListingForm({ ...listingForm, auctionDesc: e.target.value })} placeholder="경매 설명 / 입찰 유의사항" />
+                            <textarea
+                              className="textarea"
+                              value={listingForm.auctionDesc}
+                              onChange={(e) => setListingForm({ ...listingForm, auctionDesc: e.target.value })}
+                              placeholder="경매 설명 / 입찰 유의사항"
+                            />
                           </div>
                         </div>
                       )}
