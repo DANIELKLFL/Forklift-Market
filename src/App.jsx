@@ -520,6 +520,93 @@ export default function App() {
       setNotice('본인 매물만 수정할 수 있습니다.');
       return;
     }
+
+    setEditingListingId(item.id);
+    setEditForm({
+      saleType: item.saleType || 'normal',
+      title: item.title || '',
+      brand: item.brand || '',
+      ton: item.ton || '',
+      year: item.year || '',
+      mast: item.mast || '',
+      hours: item.hours || '',
+      battery: item.battery || '',
+      price: item.saleType === 'auction' ? '' : item.price || '',
+      dealerPrice: '',
+      location: item.location || '',
+      description: item.description || '',
+      auctionStartPrice: item.auctionStartPrice || '',
+      buyNowPrice: item.buyNowPrice || '',
+      bidUnit: item.bidUnit || '',
+      auctionStartAt: item.auctionStartAt || '',
+      auctionEndsAt: item.auctionEndsAt || '',
+      auctionDesc: item.auctionDesc || '',
+    });
+  };
+
+  const cancelEditListing = () => {
+    setEditingListingId('');
+    setEditForm(initialForm);
+  };
+
+  const saveEditListing = async (item) => {
+    if (!currentUser || item.authUserId !== currentUser.uid) {
+      setNotice('본인 매물만 수정할 수 있습니다.');
+      return;
+    }
+
+    if (!editForm.title || !editForm.brand || !editForm.ton || !editForm.year) {
+      setNotice('모델명, 브랜드, 톤수, 연식은 필수입니다.');
+      return;
+    }
+
+    try {
+      const isAuction = item.saleType === 'auction';
+      const updateData = {
+        title: editForm.title,
+        brand: editForm.brand,
+        ton: editForm.ton,
+        year: editForm.year,
+        mast: editForm.mast,
+        hours: editForm.hours,
+        battery: editForm.battery,
+        location: editForm.location,
+        description: editForm.description,
+      };
+
+      if (isAuction) {
+        updateData.auctionStartPrice = Number(editForm.auctionStartPrice || 0);
+        updateData.currentBid = Number(item.currentBid || editForm.auctionStartPrice || 0);
+        updateData.price = Number(editForm.auctionStartPrice || 0);
+        updateData.buyNowPrice = editForm.buyNowPrice ? Number(editForm.buyNowPrice) : null;
+        updateData.bidUnit = Number(editForm.bidUnit || 0);
+        updateData.auctionStartAt = editForm.auctionStartAt;
+        updateData.auctionEndsAt = editForm.auctionEndsAt;
+        updateData.auctionDesc = editForm.auctionDesc;
+      } else {
+        updateData.price = Number(editForm.price || 0);
+      }
+
+      await updateDoc(doc(db, 'listings', item.id), updateData);
+
+      if (editForm.dealerPrice) {
+        await setDoc(doc(db, 'dealerPrices', item.id), {
+          listingId: item.id,
+          companyId: item.companyId,
+          authUserId: currentUser.uid,
+          dealerPrice: Number(editForm.dealerPrice),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      setNotice('매물이 수정되었습니다.');
+      cancelEditListing();
+    } catch (error) {
+      setNotice(error.message || '매물 수정 중 오류가 발생했습니다.');
+    }
+  };
+
+  const updateMyListingStatus = async (id, nextStatus) => {
     try {
       await updateDoc(doc(db, 'listings', id), { status: nextStatus });
       setNotice('매물 상태가 변경되었습니다.');
@@ -1094,10 +1181,56 @@ export default function App() {
                               {item.status === 'active' ? '노출중' : item.status === 'pending' ? '승인대기' : item.status === 'sold' ? '판매완료' : '반려'}
                             </div>
                             <div className="small-actions" style={{ marginTop: 10 }}>
+                              <button onClick={() => startEditListing(item)}>수정</button>
                               <button onClick={() => updateMyListingStatus(item.id, 'sold')}>판매완료</button>
                               <button onClick={() => deleteListing(item.id)}>삭제</button>
                             </div>
                           </div>
+                          {editingListingId === item.id && (
+                            <div className="glass-card" style={{ marginTop: 14, width: '100%' }}>
+                              <h3 className="flow-title">매물 수정</h3>
+                              <div className="grid-gap" style={{ marginTop: 14 }}>
+                                <input className="field" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} placeholder="모델명" />
+                                <div className="two-col">
+                                  <input className="field" value={editForm.brand} onChange={(e) => setEditForm({ ...editForm, brand: e.target.value })} placeholder="브랜드" />
+                                  <input className="field" value={editForm.ton} onChange={(e) => setEditForm({ ...editForm, ton: e.target.value })} placeholder="톤수" />
+                                </div>
+                                <div className="two-col">
+                                  <input className="field" value={editForm.year} onChange={(e) => setEditForm({ ...editForm, year: e.target.value })} placeholder="연식" />
+                                  <input className="field" value={editForm.mast} onChange={(e) => setEditForm({ ...editForm, mast: e.target.value })} placeholder="마스트" />
+                                </div>
+                                <div className="two-col">
+                                  <input className="field" value={editForm.hours} onChange={(e) => setEditForm({ ...editForm, hours: e.target.value })} placeholder="가동시간" />
+                                  <input className="field" value={editForm.location} onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} placeholder="지역" />
+                                </div>
+                                <input className="field" value={editForm.battery} onChange={(e) => setEditForm({ ...editForm, battery: e.target.value })} placeholder="배터리 상태 / 옵션" />
+
+                                {item.saleType === 'auction' ? (
+                                  <div className="grid-gap">
+                                    <div className="two-col">
+                                      <input className="field" value={editForm.auctionStartPrice} onChange={(e) => setEditForm({ ...editForm, auctionStartPrice: e.target.value })} placeholder="시작가" type="number" />
+                                      <input className="field" value={editForm.buyNowPrice} onChange={(e) => setEditForm({ ...editForm, buyNowPrice: e.target.value })} placeholder="즉시구매가" type="number" />
+                                    </div>
+                                    <input className="field" value={editForm.bidUnit} onChange={(e) => setEditForm({ ...editForm, bidUnit: e.target.value })} placeholder="입찰 단위" type="number" />
+                                    <div className="two-col">
+                                      <input className="field" value={editForm.auctionStartAt} onChange={(e) => setEditForm({ ...editForm, auctionStartAt: e.target.value })} type="datetime-local" />
+                                      <input className="field" value={editForm.auctionEndsAt} onChange={(e) => setEditForm({ ...editForm, auctionEndsAt: e.target.value })} type="datetime-local" />
+                                    </div>
+                                    <textarea className="textarea" value={editForm.auctionDesc} onChange={(e) => setEditForm({ ...editForm, auctionDesc: e.target.value })} placeholder="경매 설명" />
+                                  </div>
+                                ) : (
+                                  <input className="field" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} placeholder="판매가" type="number" />
+                                )}
+
+                                <input className="field" value={editForm.dealerPrice} onChange={(e) => setEditForm({ ...editForm, dealerPrice: e.target.value })} placeholder="업체가 새로 입력 / 변경할 때만 입력" type="number" />
+                                <textarea className="textarea" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} placeholder="매물 설명" />
+                                <div className="small-actions">
+                                  <button onClick={() => saveEditListing(item)}>저장</button>
+                                  <button onClick={cancelEditListing}>취소</button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )) : <div className="glass-card">현재 등록된 매물이 없습니다.</div>}
                     </div>
