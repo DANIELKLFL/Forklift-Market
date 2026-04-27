@@ -350,10 +350,7 @@ export default function App() {
   const serviceCompanies = useMemo(() => {
     return companies.filter((company) => {
       if (company.memberType === 'buyer') return false;
-      const text = [company.companyName, company.businessType, company.region]
-        .join(' ')
-        .toLowerCase();
-      return text.includes('수리') || text.includes('정비') || text.includes('a/s') || text.includes('as') || text.includes('렌탈') || text.includes('매매');
+      return company.showAsService === true;
     });
   }, [companies]);
 
@@ -457,6 +454,7 @@ export default function App() {
         businessType: memberType === 'seller' ? signupForm.businessType : '소비자',
         listingLimit: memberType === 'seller' ? DEFAULT_LISTING_LIMIT : 0,
         sellerPostingAllowed: memberType === 'seller' ? true : false,
+        showAsService: false,
         auctionVerified: memberType === 'buyer' ? false : true,
         bidDepositPaid: memberType === 'buyer' ? false : true,
         bidDepositStatus: memberType === 'buyer' ? 'available' : 'none',
@@ -1698,8 +1696,17 @@ export default function App() {
                                 <>
                                   <div style={{ fontWeight: 900 }}>등록 {usedCount}개 / 한도 {limit}개</div>
                                   <div className="list-meta">
-                                    등록권한: {company.sellerPostingAllowed === false ? '중지' : '허용'}
+                                    등록권한: {company.sellerPostingAllowed === false ? '중지' : '허용'} · A/S노출: {company.showAsService ? '노출중' : '숨김'}
                                   </div>
+                                  <button
+                                    onClick={() => updateCompanyPermission(
+                                      company.id,
+                                      { showAsService: company.showAsService ? false : true },
+                                      company.showAsService ? 'A/S업체 노출을 해제했습니다.' : 'A/S업체로 노출했습니다.'
+                                    )}
+                                  >
+                                    {company.showAsService ? 'A/S 숨김' : 'A/S 노출'}
+                                  </button>
                                   <button
                                     onClick={() => updateCompanyPermission(
                                       company.id,
