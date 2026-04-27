@@ -576,12 +576,11 @@ export default function App() {
       if (selectedFiles.length > 0) {
         Promise.all(
           selectedFiles.map(async (file) => {
-            const optimizedFile = await compressImageFile(file, 1000, 0.68);
             const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            const safeImageName = optimizedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+            const safeImageName = file.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
             const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
 
-            await uploadBytes(imageRef, optimizedFile);
+            await uploadBytes(imageRef, file);
             const imageUrl = await getDownloadURL(imageRef);
             return { imageUrl, thumbnailUrl: imageUrl };
           })
