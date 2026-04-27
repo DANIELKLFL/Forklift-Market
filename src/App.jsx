@@ -220,6 +220,7 @@ export default function App() {
   });
   const [listingForm, setListingForm] = useState(initialForm);
   const [notice, setNotice] = useState('');
+  const [uploading, setUploading] = useState(false);
   const [imageFiles, setImageFiles] = useState([]);
   const [memberType, setMemberType] = useState('seller');
   const [marketVisibleCount, setMarketVisibleCount] = useState(LISTINGS_PAGE_SIZE);
@@ -387,7 +388,10 @@ export default function App() {
       setNotice(memberType === 'seller' ? '업체 회원가입이 완료되었습니다. 기본 매물 등록 한도는 4개입니다.' : '소비자 회원가입이 완료되었습니다. 경매 입찰과 즉시구매가 가능합니다.');
       setActiveTab(memberType === 'seller' ? 'dashboard' : 'market');
     } catch (error) {
-      setNotice(error.message || '회원가입 중 오류가 발생했습니다.');
+      console.error('매물 등록 오류:', error);
+      setNotice(error.message || '매물 등록 중 오류가 발생했습니다.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -410,6 +414,8 @@ export default function App() {
   };
 
   const handleCreateListing = async (e) => {
+    if (uploading) return;
+    setUploading(true);
     e.preventDefault();
 
     if (!currentUser || !currentCompany) {
@@ -1165,7 +1171,9 @@ export default function App() {
                           ))}
                         </div>
                       ) : null}
-                      <button className="btn btn-primary">매물 등록 신청</button>
+                      <button className="btn btn-primary" disabled={uploading}>
+  {uploading ? '사진 업로드 중입니다...' : '매물 등록 신청'}
+</button>
                     </form>
                     <div className="glass-card">
                       <h3 className="flow-title">등록 안내</h3>
