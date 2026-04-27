@@ -894,6 +894,7 @@ export default function App() {
                             </div>
                             <div className="small-actions" style={{ marginTop: 10 }}>
                               <button onClick={() => updateMyListingStatus(item.id, 'sold')}>판매완료</button>
+                              <button onClick={() => deleteListing(item.id)}>삭제</button>
                             </div>
                           </div>
                         </div>
