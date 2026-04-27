@@ -262,6 +262,7 @@ export default function App() {
   const [auctionVisibleCount, setAuctionVisibleCount] = useState(LISTINGS_PAGE_SIZE);
   const [editingListingId, setEditingListingId] = useState('');
   const [editForm, setEditForm] = useState(initialForm);
+  const [adminMemberFilter, setAdminMemberFilter] = useState('seller');
   const [visitorCount, setVisitorCount] = useState(0);
 
   const isAdmin = currentUser?.email === 'best@example.com';
@@ -809,6 +810,20 @@ export default function App() {
       setNotice(successMessage);
     } catch (error) {
       setNotice(error.message || '회원 권한 변경 중 오류가 발생했습니다.');
+    }
+  };
+
+  const deleteCompanyRecord = async (company) => {
+    const ok = window.confirm(`${company.companyName || company.email || '회원'} 정보를 삭제할까요?
+
+주의: Firestore 회원정보만 삭제됩니다. Firebase Authentication 로그인 계정은 콘솔에서 별도 삭제가 필요합니다.`);
+    if (!ok) return;
+
+    try {
+      await deleteDoc(doc(db, 'companies', company.id));
+      setNotice('회원 정보가 삭제되었습니다. 로그인 계정은 Firebase Authentication에서 별도 삭제해주세요.');
+    } catch (error) {
+      setNotice(error.message || '회원 삭제 중 오류가 발생했습니다.');
     }
   };
 
@@ -1648,9 +1663,37 @@ export default function App() {
                   </div>
 
                   <div className="dark-card" style={{ marginTop: 22 }}>
-                    <h3 className="flow-title">업체 정보 · 등록 한도 관리</h3>
+                    <h3 className="flow-title">회원 정보 · 권한 관리</h3>
+                    <div className="small-actions" style={{ marginTop: 14, marginBottom: 14 }}>
+                      <button
+                        onClick={() => setAdminMemberFilter('seller')}
+                        style={{ background: adminMemberFilter === 'seller' ? '#dc2626' : 'transparent' }}
+                      >
+                        업체회원 보기
+                      </button>
+                      <button
+                        onClick={() => setAdminMemberFilter('buyer')}
+                        style={{ background: adminMemberFilter === 'buyer' ? '#dc2626' : 'transparent' }}
+                      >
+                        소비자회원 보기
+                      </button>
+                      <button
+                        onClick={() => setAdminMemberFilter('all')}
+                        style={{ background: adminMemberFilter === 'all' ? '#dc2626' : 'transparent' }}
+                      >
+                        전체 보기
+                      </button>
+                    </div>
                     <div className="company-admin-grid" style={{ marginTop: 18 }}>
-                      {companies.length ? companies.map((company) => {
+                      {companies.filter((company) => {
+                        if (adminMemberFilter === 'all') return true;
+                        if (adminMemberFilter === 'buyer') return company.memberType === 'buyer';
+                        return company.memberType !== 'buyer';
+                      }).length ? companies.filter((company) => {
+                        if (adminMemberFilter === 'all') return true;
+                        if (adminMemberFilter === 'buyer') return company.memberType === 'buyer';
+                        return company.memberType !== 'buyer';
+                      }).map((company) => {
                         const usedCount = getCompanyListingCount(company);
                         const limit = getCompanyLimit(company);
 
@@ -1690,6 +1733,9 @@ export default function App() {
                                     >
                                       {company.bidDepositPaid ? '보증금 해제' : '보증금 확인'}
                                     </button>
+                                    <button onClick={() => deleteCompanyRecord(company)}>
+                                      회원정보 삭제
+                                    </button>
                                   </div>
                                 </div>
                               ) : (
@@ -1725,6 +1771,9 @@ export default function App() {
                                       <option key={num} value={num}>{num}개</option>
                                     ))}
                                   </select>
+                                  <button onClick={() => deleteCompanyRecord(company)}>
+                                    회원정보 삭제
+                                  </button>
                                 </>
                               )}
                             </div>
