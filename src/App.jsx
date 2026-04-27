@@ -8,6 +8,7 @@ import {
 import {
   addDoc,
   collection,
+  getDocs,
   deleteDoc,
   doc,
   onSnapshot,
@@ -458,6 +459,8 @@ export default function App() {
         sellerPostingAllowed: memberType === 'seller' ? true : false,
         auctionVerified: memberType === 'buyer' ? false : true,
         bidDepositPaid: memberType === 'buyer' ? false : true,
+        bidDepositStatus: memberType === 'buyer' ? 'available' : 'none',
+        currentAuctionId: '',
         role: ADMIN_EMAILS.includes(signupForm.email) ? 'admin' : memberType,
         createdAt: serverTimestamp(),
       });
@@ -808,6 +811,64 @@ export default function App() {
       setNotice(successMessage);
     } catch (error) {
       setNotice(error.message || '회원 권한 변경 중 오류가 발생했습니다.');
+    }
+  };
+
+  const finalizeAuction = async (listing) => {
+    const ok = window.confirm('이 경매의 낙찰자를 선정하고 보증금을 정리할까요?');
+    if (!ok) return;
+
+    try {
+      const bidsSnap = await getDocs(collection(db, 'listings', listing.id, 'bids'));
+      const bids = bidsSnap.docs.map((bidDoc) => ({ id: bidDoc.id, ...bidDoc.data() }));
+
+      if (!bids.length) {
+        await updateDoc(doc(db, 'listings', listing.id), {
+          auctionStatus: 'ended_no_bids',
+          status: 'sold',
+          winnerId: '',
+          winnerEmail: '',
+          winningPrice: null,
+          finalizedAt: serverTimestamp(),
+        });
+        setNotice('입찰자가 없어 경매를 종료 처리했습니다.');
+        return;
+      }
+
+      const winner = bids.reduce((best, bid) => {
+        return Number(bid.amount || 0) > Number(best.amount || 0) ? bid : best;
+      }, bids[0]);
+
+      await updateDoc(doc(db, 'listings', listing.id), {
+        auctionStatus: 'finalized',
+        status: 'sold',
+        winnerId: winner.userId || '',
+        winnerEmail: winner.userEmail || '',
+        winnerName: winner.bidderName || '',
+        winnerPhone: winner.bidderPhone || '',
+        winningPrice: Number(winner.amount || 0),
+        finalizedAt: serverTimestamp(),
+      });
+
+      const bidderIds = [...new Set(bids.map((bid) => bid.userId).filter(Boolean))];
+
+      await Promise.all(
+        bidderIds.map(async (bidderId) => {
+          const isWinner = bidderId === winner.userId;
+          await updateDoc(doc(db, 'companies', bidderId), {
+            bidDepositStatus: isWinner ? 'used' : 'available',
+            currentAuctionId: '',
+            lastAuctionId: listing.id,
+            lastAuctionResult: isWinner ? 'winner' : 'lost',
+            lastAuctionUpdatedAt: serverTimestamp(),
+          });
+        })
+      );
+
+      setNotice(`낙찰자 선정 완료: ${winner.userEmail || winner.userId} / ${winner.amount}만원`);
+    } catch (error) {
+      console.error('낙찰 처리 오류:', error);
+      setNotice(error.message || '낙찰 처리 중 오류가 발생했습니다.');
     }
   };
 
@@ -1555,6 +1616,36 @@ export default function App() {
                           </div>
                         </div>
                       )) : <div className="glass-card">현재 승인대기 매물이 없습니다.</div>}
+                    </div>
+                  </div>
+
+                  <div className="dark-card" style={{ marginTop: 22 }}>
+                    <h3 className="flow-title">경매 낙찰 관리</h3>
+                    <div className="list-stack" style={{ marginTop: 18 }}>
+                      {auctionListings.length ? auctionListings.map((item) => {
+                        const ended = item.auctionEndsAt ? new Date(item.auctionEndsAt).getTime() <= Date.now() : false;
+                        return (
+                          <div key={item.id} className="list-item">
+                            <div>
+                              <div style={{ fontSize: 20, fontWeight: 900 }}>{item.title}</div>
+                              <div className="list-meta">입찰수 {item.bidCount || 0}회 · 종료 {item.auctionEndsAt || '미정'} · 상태 {item.auctionStatus || '-'}</div>
+                              {item.winnerEmail ? (
+                                <div className="list-meta" style={{ color: '#fca5a5' }}>
+                                  낙찰자: {item.winnerEmail} · 낙찰가: {item.winningPrice}만원 · 연락처: {item.winnerPhone || '-'}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="small-actions">
+                              <button
+                                onClick={() => finalizeAuction(item)}
+                                disabled={!ended || item.auctionStatus === 'finalized'}
+                              >
+                                {item.auctionStatus === 'finalized' ? '낙찰완료' : ended ? '낙찰자 선정' : '진행중'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }) : <div className="glass-card">관리할 경매가 없습니다.</div>}
                     </div>
                   </div>
 
