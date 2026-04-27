@@ -365,13 +365,33 @@ export default function App() {
   }, [serviceCompanies]);
 
   const filteredListings = useMemo(() => {
+    const searchWords = keyword
+      .toLowerCase()
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
     return visibleListings.filter((item) => {
-      const matchKeyword = keyword
-        ? [item.title, item.brand, item.ton, item.location, item.sellerName, item.description]
-            .join(' ')
-            .toLowerCase()
-            .includes(keyword.toLowerCase())
+      const searchText = [
+        item.title,
+        item.brand,
+        item.ton,
+        item.year,
+        item.mast,
+        item.hours,
+        item.battery,
+        item.option,
+        item.location,
+        item.sellerName,
+        item.description,
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      const matchKeyword = searchWords.length
+        ? searchWords.some((word) => searchText.includes(word))
         : true;
+
       const matchBrand = brandFilter ? item.brand === brandFilter : true;
       const matchTon = tonFilter ? item.ton === tonFilter : true;
       return matchKeyword && matchBrand && matchTon;
@@ -379,13 +399,34 @@ export default function App() {
   }, [visibleListings, keyword, brandFilter, tonFilter]);
 
   const filteredAuctionListings = useMemo(() => {
+    const searchWords = keyword
+      .toLowerCase()
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
     return auctionListings.filter((item) => {
-      const matchKeyword = keyword
-        ? [item.title, item.brand, item.ton, item.location, item.sellerName, item.description, item.auctionDesc]
-            .join(' ')
-            .toLowerCase()
-            .includes(keyword.toLowerCase())
+      const searchText = [
+        item.title,
+        item.brand,
+        item.ton,
+        item.year,
+        item.mast,
+        item.hours,
+        item.battery,
+        item.option,
+        item.location,
+        item.sellerName,
+        item.description,
+        item.auctionDesc,
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      const matchKeyword = searchWords.length
+        ? searchWords.some((word) => searchText.includes(word))
         : true;
+
       const matchBrand = brandFilter ? item.brand === brandFilter : true;
       const matchTon = tonFilter ? item.ton === tonFilter : true;
       return matchKeyword && matchBrand && matchTon;
