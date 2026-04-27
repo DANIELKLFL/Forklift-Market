@@ -552,8 +552,10 @@ export default function App() {
 
       setListingForm(initialForm);
       setImageFiles([]);
-      setNotice(selectedFiles.length ? '매물 정보가 먼저 저장되었습니다. 사진은 뒤에서 자동 업로드 중입니다.' : '매물 등록이 완료되었습니다. 관리자 승인 후 공개됩니다.');
+      setNotice(selectedFiles.length ? '매물 정보가 먼저 저장되었습니다. 사진은 뒤에서 자동 업로드 중입니다. 내 매물관리로 이동합니다.' : '매물 등록이 완료되었습니다. 내 매물관리로 이동합니다.');
+      window.alert(selectedFiles.length ? '매물 정보 저장 완료! 사진은 뒤에서 자동 업로드됩니다. 내 매물관리로 이동합니다.' : '매물 등록 완료! 내 매물관리로 이동합니다.');
       setActiveTab('dashboard');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       console.error('매물 등록 오류:', error);
       setNotice(error.message || '매물 등록 중 오류가 발생했습니다.');
