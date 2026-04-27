@@ -80,6 +80,23 @@ function StatCard({ label, value }) {
   );
 }
 
+function getResizedImage(url, size) {
+  if (!url || !size) return url;
+
+  try {
+    const match = url.match(/\/b\/([^/]+)\/o\/([^?]+)/);
+    if (!match) return url;
+
+    const bucket = match[1];
+    const filePath = decodeURIComponent(match[2]);
+    const resizedPath = filePath.replace(/\.[^/.]+$/, `_${size}.webp`);
+
+    return `https://storage.googleapis.com/${bucket}/${resizedPath}`;
+  } catch (error) {
+    return url;
+  }
+}
+
 function getTimeLeftText(endTime) {
   if (!endTime) return '종료일 미정';
 
@@ -183,11 +200,15 @@ function ListingCard({ item, isAdmin, onDelete }) {
   return (
     <div className="listing-card">
       <div className="listing-image">
-        {item.thumbnailUrls?.[0] || item.imageUrls?.[0] ? (
+        {item.imageUrls?.[0] || item.thumbnailUrls?.[0] ? (
           <img
-            src={item.thumbnailUrls?.[0] || item.imageUrls?.[0]}
+            src={getResizedImage(item.imageUrls?.[0] || item.thumbnailUrls?.[0], '400x400')}
             alt={item.title}
             loading="lazy"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = item.imageUrls?.[0] || item.thumbnailUrls?.[0];
+            }}
           />
         ) : '대표 이미지'}
       </div>
