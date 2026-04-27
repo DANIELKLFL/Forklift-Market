@@ -210,10 +210,13 @@ export default function App() {
   const [listingForm, setListingForm] = useState(initialForm);
   const [notice, setNotice] = useState('');
   const [imageFiles, setImageFiles] = useState([]);
+  const [memberType, setMemberType] = useState('seller');
   const [marketVisibleCount, setMarketVisibleCount] = useState(LISTINGS_PAGE_SIZE);
   const [auctionVisibleCount, setAuctionVisibleCount] = useState(LISTINGS_PAGE_SIZE);
 
   const isAdmin = currentUser?.email === 'best@example.com';
+  const isSeller = currentCompany?.memberType !== 'buyer' && !!currentCompany;
+  const isBuyer = currentCompany?.memberType === 'buyer';
 
   useEffect(() => {
     document.title = 'FORKLIFT MARKET | 중고지게차 매물 플랫폼';
@@ -337,28 +340,39 @@ export default function App() {
 
   const handleSignup = async (e) => {
     e.preventDefault();
-    if (!signupForm.companyName || !signupForm.name || !signupForm.phone || !signupForm.email || !signupForm.password) {
-      setNotice('필수 항목을 입력해주세요.');
-      return;
+
+    if (memberType === 'seller') {
+      if (!signupForm.companyName || !signupForm.name || !signupForm.phone || !signupForm.email || !signupForm.password) {
+        setNotice('업체명, 담당자명, 연락처, 이메일, 비밀번호를 입력해주세요.');
+        return;
+      }
+    }
+
+    if (memberType === 'buyer') {
+      if (!signupForm.name || !signupForm.phone || !signupForm.email || !signupForm.password) {
+        setNotice('이름, 연락처, 이메일, 비밀번호를 입력해주세요.');
+        return;
+      }
     }
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, signupForm.email, signupForm.password);
       await setDoc(doc(db, 'companies', cred.user.uid), {
         authUserId: cred.user.uid,
-        companyName: signupForm.companyName,
+        memberType,
+        companyName: memberType === 'seller' ? signupForm.companyName : signupForm.name,
         name: signupForm.name,
         phone: signupForm.phone,
         email: signupForm.email,
         region: signupForm.region,
-        businessType: signupForm.businessType,
-        listingLimit: DEFAULT_LISTING_LIMIT,
-        role: ADMIN_EMAILS.includes(signupForm.email) ? 'admin' : 'seller',
+        businessType: memberType === 'seller' ? signupForm.businessType : '소비자',
+        listingLimit: memberType === 'seller' ? DEFAULT_LISTING_LIMIT : 0,
+        role: ADMIN_EMAILS.includes(signupForm.email) ? 'admin' : memberType,
         createdAt: serverTimestamp(),
       });
       setSignupForm({ companyName: '', name: '', phone: '', email: '', password: '', region: '', businessType: '' });
-      setNotice('업체 회원가입이 완료되었습니다. 기본 매물 등록 한도는 4개입니다.');
-      setActiveTab('dashboard');
+      setNotice(memberType === 'seller' ? '업체 회원가입이 완료되었습니다. 기본 매물 등록 한도는 4개입니다.' : '소비자 회원가입이 완료되었습니다. 경매 입찰과 즉시구매가 가능합니다.');
+      setActiveTab(memberType === 'seller' ? 'dashboard' : 'market');
     } catch (error) {
       setNotice(error.message || '회원가입 중 오류가 발생했습니다.');
     }
@@ -388,6 +402,11 @@ export default function App() {
     if (!currentUser || !currentCompany) {
       setNotice('로그인한 업체 회원만 등록할 수 있습니다.');
       setActiveTab('seller');
+      return;
+    }
+
+    if (currentCompany.memberType === 'buyer') {
+      setNotice('소비자 회원은 매물을 등록할 수 없습니다. 업체회원만 등록 가능합니다.');
       return;
     }
 
@@ -699,9 +718,9 @@ export default function App() {
                     ['home', '홈'],
                     ['market', '매물보기'],
                     ['auction', '경매물품'],
-                    ['seller', '업체가입'],
-                    ['register', '매물등록'],
-                    ...(currentCompany ? [['dashboard', '대시보드']] : []),
+                    ['seller', '회원가입/로그인'],
+                    ...(isSeller || isAdmin ? [['register', '매물등록']] : []),
+                    ...(isSeller ? [['dashboard', '대시보드']] : []),
                     ...(isAdmin ? [['admin', '관리자']] : []),
                   ].map(([key, label]) => (
                     <button key={key} className={activeTab === key ? 'active' : ''} onClick={() => setActiveTab(key)}>{label}</button>
@@ -822,20 +841,40 @@ export default function App() {
             {activeTab === 'seller' && (
               <section className="section">
                 <div className="container">
-                  <SectionTitle eyebrow="Seller Center" title="업체 회원가입 · 로그인" subtitle="업체 회원만 매물을 등록할 수 있습니다." />
+                  <SectionTitle eyebrow="Member Center" title="회원가입 · 로그인" subtitle="업체회원은 매물 등록, 소비자회원은 경매 입찰과 즉시구매가 가능합니다." />
                   <div className="feature-grid">
                     <div className="dark-card">
                       <h3 className="flow-title">회원가입</h3>
                       <form className="grid-gap" style={{ marginTop: 18 }} onSubmit={handleSignup}>
-                        <input className="field" value={signupForm.companyName} onChange={(e) => setSignupForm({ ...signupForm, companyName: e.target.value })} placeholder="업체명" />
+                        <div className="two-col">
+                          <button
+                            type="button"
+                            className={memberType === 'seller' ? 'btn btn-primary' : 'btn btn-secondary'}
+                            onClick={() => setMemberType('seller')}
+                          >
+                            업체회원
+                          </button>
+                          <button
+                            type="button"
+                            className={memberType === 'buyer' ? 'btn btn-primary' : 'btn btn-secondary'}
+                            onClick={() => setMemberType('buyer')}
+                          >
+                            소비자회원
+                          </button>
+                        </div>
+                        {memberType === 'seller' && (
+                          <input className="field" value={signupForm.companyName} onChange={(e) => setSignupForm({ ...signupForm, companyName: e.target.value })} placeholder="업체명" />
+                        )}
                         <input className="field" value={signupForm.name} onChange={(e) => setSignupForm({ ...signupForm, name: e.target.value })} placeholder="담당자명" />
                         <input className="field" value={signupForm.phone} onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })} placeholder="연락처" />
                         <input className="field" value={signupForm.email} onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })} placeholder="이메일" type="email" />
                         <input className="field" value={signupForm.password} onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })} placeholder="비밀번호" type="password" />
-                        <div className="two-col">
-                          <input className="field" value={signupForm.region} onChange={(e) => setSignupForm({ ...signupForm, region: e.target.value })} placeholder="지역" />
-                          <input className="field" value={signupForm.businessType} onChange={(e) => setSignupForm({ ...signupForm, businessType: e.target.value })} placeholder="업종 (매매/렌탈/정비)" />
-                        </div>
+                        {memberType === 'seller' && (
+                          <div className="two-col">
+                            <input className="field" value={signupForm.region} onChange={(e) => setSignupForm({ ...signupForm, region: e.target.value })} placeholder="지역" />
+                            <input className="field" value={signupForm.businessType} onChange={(e) => setSignupForm({ ...signupForm, businessType: e.target.value })} placeholder="업종 (매매/렌탈/정비)" />
+                          </div>
+                        )}
                         <button className="btn btn-primary">회원가입</button>
                       </form>
                     </div>
@@ -956,7 +995,7 @@ export default function App() {
               </section>
             )}
 
-            {activeTab === 'dashboard' && currentCompany && (
+            {activeTab === 'dashboard' && isSeller && currentCompany && (
               <section className="section">
                 <div className="container">
                   <SectionTitle eyebrow="Seller Dashboard" title={`${currentCompany.companyName} 판매업체 관리`} subtitle="내 매물 등록 현황과 상태를 한눈에 확인할 수 있습니다." />
@@ -1042,19 +1081,25 @@ export default function App() {
                               <div className="list-meta">연락처: {company.phone || '-'}</div>
                               <div className="list-meta">이메일: {company.email || '-'}</div>
                               <div className="list-meta">지역: {company.region || '-'} · 업종: {company.businessType || '-'}</div>
-                              <div className="list-meta">권한: {company.role || 'seller'}</div>
+                              <div className="list-meta">회원구분: {company.memberType === 'buyer' ? '소비자회원' : '업체회원'} · 권한: {company.role || 'seller'}</div>
                             </div>
                             <div className="limit-control">
-                              <div style={{ fontWeight: 900 }}>등록 {usedCount}개 / 한도 {limit}개</div>
-                              <select
-                                className="select"
-                                value={limit}
-                                onChange={(e) => updateCompanyLimit(company.id, e.target.value)}
-                              >
-                                {Array.from({ length: MAX_LISTING_LIMIT - DEFAULT_LISTING_LIMIT + 1 }, (_, index) => DEFAULT_LISTING_LIMIT + index).map((num) => (
-                                  <option key={num} value={num}>{num}개</option>
-                                ))}
-                              </select>
+                              {company.memberType === 'buyer' ? (
+                                <div style={{ fontWeight: 900 }}>소비자회원 · 매물등록 불가</div>
+                              ) : (
+                                <>
+                                  <div style={{ fontWeight: 900 }}>등록 {usedCount}개 / 한도 {limit}개</div>
+                                  <select
+                                    className="select"
+                                    value={limit}
+                                    onChange={(e) => updateCompanyLimit(company.id, e.target.value)}
+                                  >
+                                    {Array.from({ length: MAX_LISTING_LIMIT - DEFAULT_LISTING_LIMIT + 1 }, (_, index) => DEFAULT_LISTING_LIMIT + index).map((num) => (
+                                      <option key={num} value={num}>{num}개</option>
+                                    ))}
+                                  </select>
+                                </>
+                              )}
                             </div>
                           </div>
                         );
