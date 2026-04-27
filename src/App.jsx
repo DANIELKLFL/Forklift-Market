@@ -467,19 +467,22 @@ export default function App() {
   };
 
   const handleCreateListing = async (e) => {
+    e.preventDefault();
+
     if (uploading) return;
     setUploading(true);
     setUploadProgress(0);
-    e.preventDefault();
 
     if (!currentUser || !currentCompany) {
       setNotice('로그인한 업체 회원만 등록할 수 있습니다.');
       setActiveTab('seller');
+      setUploading(false);
       return;
     }
 
     if (currentCompany.memberType === 'buyer') {
       setNotice('소비자 회원은 매물을 등록할 수 없습니다. 업체회원만 등록 가능합니다.');
+      setUploading(false);
       return;
     }
 
@@ -488,43 +491,63 @@ export default function App() {
 
     if (currentCount >= limit) {
       setNotice(`현재 등록 가능 한도는 ${limit}개입니다. 관리자에게 한도 상향을 요청해주세요.`);
+      setUploading(false);
       return;
     }
 
     if (!listingForm.title || !listingForm.brand || !listingForm.ton || !listingForm.year) {
       setNotice('모델명, 브랜드, 톤수, 연식은 필수입니다.');
+      setUploading(false);
       return;
     }
 
     if (listingForm.saleType === 'normal' && !listingForm.price) {
       setNotice('일반 판매 매물은 판매가를 입력해주세요.');
+      setUploading(false);
       return;
     }
 
     if (listingForm.saleType === 'auction') {
       if (!listingForm.auctionStartPrice || !listingForm.bidUnit || !listingForm.auctionStartAt || !listingForm.auctionEndsAt) {
         setNotice('경매물품은 시작가, 입찰 단위, 경매 시작시간, 경매 종료시간을 입력해주세요.');
+        setUploading(false);
         return;
       }
 
       if (new Date(listingForm.auctionEndsAt).getTime() <= new Date(listingForm.auctionStartAt).getTime()) {
         setNotice('경매 종료시간은 시작시간보다 늦어야 합니다.');
+        setUploading(false);
         return;
       }
     }
 
     try {
+      const selectedFiles = imageFiles.slice(0, 5);
+      let imageUrls = [];
+      let thumbnailUrls = [];
+
+      // 가장 안정적인 방식: 사진을 먼저 업로드하고 URL을 받은 뒤 매물을 저장합니다.
+      if (selectedFiles.length > 0) {
+        const uploadedImages = await Promise.all(
+          selectedFiles.map(async (file, index) => {
+            const timeKey = `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+            const safeImageName = file.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+            const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
+
+            await uploadBytes(imageRef, file);
+            const imageUrl = await getDownloadURL(imageRef);
+            setUploadProgress(Math.round(((index + 1) / selectedFiles.length) * 100));
+            return imageUrl;
+          })
+        );
+
+        imageUrls = uploadedImages;
+        thumbnailUrls = uploadedImages;
+      }
+
       const isAuction = listingForm.saleType === 'auction';
       const startPrice = Number(listingForm.auctionStartPrice || 0);
-      const selectedFiles = imageFiles.slice(0, 5);
-      const totalUploadSteps = Math.max(1, selectedFiles.length);
-      let finishedUploadSteps = 0;
-      const updateProgress = () => {
-        finishedUploadSteps += 1;
-        setUploadProgress(Math.min(99, Math.round((finishedUploadSteps / totalUploadSteps) * 100)));
-      };
 
-      // 1단계: 매물 정보부터 먼저 저장합니다. 사진은 잠시 후 자동으로 붙습니다.
       const listingDocRef = await addDoc(collection(db, 'listings'), {
         companyId: currentCompany.id,
         authUserId: currentUser.uid,
@@ -554,9 +577,9 @@ export default function App() {
         highestBidderEmail: '',
         highestBidderName: '',
         auctionStatus: isAuction ? 'scheduled' : null,
-        imageUrls: [],
-        thumbnailUrls: [],
-        imageUploadStatus: selectedFiles.length ? 'uploading' : 'none',
+        imageUrls,
+        thumbnailUrls,
+        imageUploadStatus: selectedFiles.length ? 'done' : 'none',
         status: 'pending',
         featured: false,
         createdAt: serverTimestamp(),
@@ -572,44 +595,18 @@ export default function App() {
         });
       }
 
-      // 2단계: 사진은 뒤에서 자동 업로드합니다. 사용자는 바로 내 매물관리로 이동합니다.
-      if (selectedFiles.length > 0) {
-        Promise.all(
-          selectedFiles.map(async (file) => {
-            const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            const safeImageName = file.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
-            const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
-
-            await uploadBytes(imageRef, file);
-            const imageUrl = await getDownloadURL(imageRef);
-            return { imageUrl, thumbnailUrl: imageUrl };
-          })
-        )
-          .then(async (uploadedImages) => {
-            await updateDoc(doc(db, 'listings', listingDocRef.id), {
-              imageUrls: uploadedImages.map((image) => image.imageUrl),
-              thumbnailUrls: uploadedImages.map((image) => image.thumbnailUrl),
-              imageUploadStatus: 'done',
-              imageUploadedAt: serverTimestamp(),
-            });
-          })
-          .catch(async (error) => {
-            console.error('사진 업로드 오류:', error);
-            await updateDoc(doc(db, 'listings', listingDocRef.id), {
-              imageUploadStatus: 'error',
-            });
-          });
-      }
-
       setListingForm(initialForm);
       setImageFiles([]);
-      setNotice(selectedFiles.length ? '매물 등록 완료! 사진은 뒤에서 자동 업로드됩니다.' : '매물 등록 완료! 내 매물관리로 이동합니다.');
-      window.alert(selectedFiles.length ? '매물 등록 완료! 사진은 뒤에서 자동 업로드됩니다.' : '매물 등록 완료! 내 매물관리로 이동합니다.');
+      setNotice('매물 등록이 완료되었습니다. 내 매물관리로 이동합니다.');
+      window.alert('매물 등록 완료! 내 매물관리로 이동합니다.');
       setActiveTab('dashboard');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       console.error('매물 등록 오류:', error);
       setNotice(error.message || '매물 등록 중 오류가 발생했습니다.');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
     }
   };
 
