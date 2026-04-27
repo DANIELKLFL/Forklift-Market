@@ -1409,19 +1409,20 @@ export default function App() {
                           ))}
                         </div>
                       ) : null}
-                      <button className="btn btn-primary" disabled={uploading}>
-  {uploading ? `사진 업로드 중입니다... ${uploadProgress}%` : '매물 등록 신청'}
-</button>
-{uploading && (
-  <div style={{ marginTop: 8 }}>
-    <div style={{ height: 8, background: 'rgba(255,255,255,0.12)', borderRadius: 999, overflow: 'hidden' }}>
-      <div style={{ width: `${uploadProgress}%`, height: '100%', background: '#dc2626', transition: 'width 0.2s ease' }} />
-    </div>
-    <div className="list-meta" style={{ marginTop: 6 }}>
-      사진 압축과 업로드를 진행 중입니다. 완료되면 자동으로 내 매물관리로 이동합니다.
-    </div>
-  </div>
-)
+                      <button className="btn btn-primary" disabled={uploading} type="submit">
+                        {uploading ? `사진 업로드 중입니다... ${uploadProgress}%` : '매물 등록 신청'}
+                      </button>
+
+                      {uploading && (
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ height: 8, background: 'rgba(255,255,255,0.12)', borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{ width: `${uploadProgress}%`, height: '100%', background: '#dc2626', transition: 'width 0.2s ease' }} />
+                          </div>
+                          <div className="list-meta" style={{ marginTop: 6 }}>
+                            사진 압축과 업로드를 진행 중입니다. 완료되면 자동으로 내 매물관리로 이동합니다.
+                          </div>
+                        </div>
+                      )
                     </form>
                     <div className="glass-card">
                       <h3 className="flow-title">등록 안내</h3>
