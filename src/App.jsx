@@ -19,7 +19,7 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import ListingDetail from './ListingDetail';
@@ -147,24 +147,6 @@ async function compressImageFile(file, maxWidth = 1200, quality = 0.72) {
   });
 }
 
-function uploadFileWithProgress(storageRef, file, onProgress) {
-  return new Promise((resolve, reject) => {
-    const task = uploadBytesResumable(storageRef, file);
-
-    task.on(
-      'state_changed',
-      (snapshot) => {
-        const percent = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-        onProgress?.(percent);
-      },
-      reject,
-      async () => {
-        const url = await getDownloadURL(task.snapshot.ref);
-        resolve(url);
-      }
-    );
-  });
-}
 
 function ListingCard({ item, isAdmin, onDelete }) {
   const navigate = useNavigate();
@@ -602,7 +584,8 @@ export default function App() {
 
               const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
 
-              const imageUrl = await uploadFileWithProgress(imageRef, optimizedFile, () => {});
+              await uploadBytes(imageRef, optimizedFile);
+              const imageUrl = await getDownloadURL(imageRef);
               updateProgress();
 
               return { imageUrl, thumbnailUrl: imageUrl };
@@ -1405,7 +1388,7 @@ export default function App() {
                         </div>
                       ) : null}
                       <button className="btn btn-primary" disabled={uploading} type="submit">
-                        {uploading ? `사진 업로드 중입니다... ${uploadProgress}%` : '매물 등록 신청'}
+                        {uploading ? '사진 압축 및 업로드 중입니다. 잠시만 기다려주세요...' : '매물 등록 신청'}
                       </button>
 
                       {uploading && (
