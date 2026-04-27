@@ -23,8 +23,11 @@ import { Routes, Route, useNavigate } from 'react-router-dom';
 import ListingDetail from './ListingDetail';
 
 const ADMIN_EMAILS = ['best@example.com'];
+const DEFAULT_LISTING_LIMIT = 4;
+const MAX_LISTING_LIMIT = 20;
 
 const initialForm = {
+  saleType: 'normal',
   title: '',
   brand: '',
   ton: '',
@@ -35,6 +38,12 @@ const initialForm = {
   price: '',
   location: '',
   description: '',
+  auctionStartPrice: '',
+  buyNowPrice: '',
+  bidUnit: '',
+  auctionStartAt: '',
+  auctionEndsAt: '',
+  auctionDesc: '',
 };
 
 function SectionTitle({ eyebrow, title, subtitle }) {
@@ -56,9 +65,29 @@ function StatCard({ label, value }) {
   );
 }
 
+function getTimeLeftText(endTime) {
+  if (!endTime) return '종료일 미정';
+
+  const end = new Date(endTime).getTime();
+  const now = Date.now();
+  const diff = end - now;
+
+  if (Number.isNaN(end)) return '종료일 미정';
+  if (diff <= 0) return '경매 종료';
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const minutes = Math.floor((diff / (1000 * 60)) % 60);
+
+  if (days > 0) return `${days}일 ${hours}시간 남음`;
+  if (hours > 0) return `${hours}시간 ${minutes}분 남음`;
+  return `${minutes}분 남음`;
+}
+
 function ListingCard({ item, isAdmin, onDelete }) {
   const navigate = useNavigate();
   const isAuction = item.saleType === 'auction';
+  const currentPrice = item.currentBid || item.auctionStartPrice || item.price;
 
   return (
     <div className="listing-card">
@@ -77,12 +106,18 @@ function ListingCard({ item, isAdmin, onDelete }) {
           <div className="spec-box"><span>가동시간</span><strong>{item.hours || '-'}</strong></div>
           <div className="spec-box"><span>배터리</span><strong>{item.battery || '-'}</strong></div>
         </div>
+
+        {isAuction ? (
+          <div className="auction-mini">
+            <div><span>입찰수</span><strong>{item.bidCount || 0}회</strong></div>
+            <div><span>남은시간</span><strong>{getTimeLeftText(item.auctionEndsAt)}</strong></div>
+          </div>
+        ) : null}
+
         <div className="listing-footer">
           <div>
-            <div className="price-label">{isAuction ? '현재가 / 시작가' : '판매가'}</div>
-            <div className="price-value">
-              {item.price ? `${item.price}만원` : '-'}
-            </div>
+            <div className="price-label">{isAuction ? '현재 입찰가' : '판매가'}</div>
+            <div className="price-value">{currentPrice ? `${currentPrice}만원` : '-'}</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-light" onClick={() => navigate(`/listing/${item.id}`)}>
@@ -90,10 +125,7 @@ function ListingCard({ item, isAdmin, onDelete }) {
             </button>
 
             {isAdmin && (
-              <button
-                className="btn btn-primary"
-                onClick={() => onDelete(item.id)}
-              >
+              <button className="btn btn-primary" onClick={() => onDelete(item.id)}>
                 삭제
               </button>
             )}
@@ -162,23 +194,21 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser) return;
-    const found = companies.find((item) => item.authUserId === currentUser.uid);
+    const found = companies.find((item) => item.authUserId === currentUser.uid || item.id === currentUser.uid);
     setCurrentCompany(found || null);
   }, [companies, currentUser]);
 
   useEffect(() => {
     if (!notice) return;
-    const timer = setTimeout(() => setNotice(''), 2500);
+    const timer = setTimeout(() => setNotice(''), 3000);
     return () => clearTimeout(timer);
   }, [notice]);
 
-  // 일반 매물만 매물보기/홈에 노출
   const visibleListings = useMemo(
     () => listings.filter((item) => item.status === 'active' && item.saleType !== 'auction'),
     [listings]
   );
 
-  // 경매물품 탭에만 노출
   const auctionListings = useMemo(
     () => listings.filter((item) => item.status === 'active' && item.saleType === 'auction'),
     [listings]
@@ -203,7 +233,7 @@ export default function App() {
   const filteredAuctionListings = useMemo(() => {
     return auctionListings.filter((item) => {
       const matchKeyword = keyword
-        ? [item.title, item.brand, item.ton, item.location, item.sellerName, item.description]
+        ? [item.title, item.brand, item.ton, item.location, item.sellerName, item.description, item.auctionDesc]
             .join(' ')
             .toLowerCase()
             .includes(keyword.toLowerCase())
@@ -215,7 +245,7 @@ export default function App() {
   }, [auctionListings, keyword, brandFilter, tonFilter]);
 
   const featuredListings = useMemo(() => visibleListings.filter((item) => item.featured).slice(0, 3), [visibleListings]);
-  const myListings = useMemo(() => currentCompany ? listings.filter((item) => item.companyId === currentCompany.id) : [], [listings, currentCompany]);
+  const myListings = useMemo(() => currentCompany ? listings.filter((item) => item.companyId === currentCompany.id || item.authUserId === currentUser?.uid) : [], [listings, currentCompany, currentUser]);
 
   const dashboardStats = useMemo(() => ({
     totalListings: myListings.length,
@@ -223,6 +253,14 @@ export default function App() {
     pendingCount: myListings.filter((item) => item.status === 'pending').length,
     soldCount: myListings.filter((item) => item.status === 'sold').length,
   }), [myListings]);
+
+  const getCompanyListingCount = (company) => {
+    return listings.filter((item) => item.companyId === company.id || item.authUserId === company.authUserId).length;
+  };
+
+  const getCompanyLimit = (company) => {
+    return Number(company.listingLimit || DEFAULT_LISTING_LIMIT);
+  };
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -241,11 +279,12 @@ export default function App() {
         email: signupForm.email,
         region: signupForm.region,
         businessType: signupForm.businessType,
+        listingLimit: DEFAULT_LISTING_LIMIT,
         role: ADMIN_EMAILS.includes(signupForm.email) ? 'admin' : 'seller',
         createdAt: serverTimestamp(),
       });
       setSignupForm({ companyName: '', name: '', phone: '', email: '', password: '', region: '', businessType: '' });
-      setNotice('업체 회원가입이 완료되었습니다.');
+      setNotice('업체 회원가입이 완료되었습니다. 기본 매물 등록 한도는 4개입니다.');
       setActiveTab('dashboard');
     } catch (error) {
       setNotice(error.message || '회원가입 중 오류가 발생했습니다.');
@@ -279,9 +318,34 @@ export default function App() {
       return;
     }
 
-    if (!listingForm.title || !listingForm.brand || !listingForm.ton || !listingForm.year || !listingForm.price) {
-      setNotice('필수 항목을 입력해주세요.');
+    const currentCount = getCompanyListingCount(currentCompany);
+    const limit = getCompanyLimit(currentCompany);
+
+    if (currentCount >= limit) {
+      setNotice(`현재 등록 가능 한도는 ${limit}개입니다. 관리자에게 한도 상향을 요청해주세요.`);
       return;
+    }
+
+    if (!listingForm.title || !listingForm.brand || !listingForm.ton || !listingForm.year) {
+      setNotice('모델명, 브랜드, 톤수, 연식은 필수입니다.');
+      return;
+    }
+
+    if (listingForm.saleType === 'normal' && !listingForm.price) {
+      setNotice('일반 판매 매물은 판매가를 입력해주세요.');
+      return;
+    }
+
+    if (listingForm.saleType === 'auction') {
+      if (!listingForm.auctionStartPrice || !listingForm.bidUnit || !listingForm.auctionStartAt || !listingForm.auctionEndsAt) {
+        setNotice('경매물품은 시작가, 입찰 단위, 경매 시작시간, 경매 종료시간을 입력해주세요.');
+        return;
+      }
+
+      if (new Date(listingForm.auctionEndsAt).getTime() <= new Date(listingForm.auctionStartAt).getTime()) {
+        setNotice('경매 종료시간은 시작시간보다 늦어야 합니다.');
+        return;
+      }
     }
 
     try {
@@ -298,13 +362,37 @@ export default function App() {
         );
       }
 
+      const isAuction = listingForm.saleType === 'auction';
+      const startPrice = Number(listingForm.auctionStartPrice || 0);
+
       await addDoc(collection(db, 'listings'), {
         companyId: currentCompany.id,
         authUserId: currentUser.uid,
         sellerName: currentCompany.companyName,
         sellerPhone: currentCompany.phone || '',
-        ...listingForm,
-        saleType: 'normal',
+        title: listingForm.title,
+        brand: listingForm.brand,
+        ton: listingForm.ton,
+        year: listingForm.year,
+        mast: listingForm.mast,
+        hours: listingForm.hours,
+        battery: listingForm.battery,
+        price: isAuction ? startPrice : Number(listingForm.price || 0),
+        location: listingForm.location,
+        description: listingForm.description,
+        saleType: listingForm.saleType,
+        auctionStartPrice: isAuction ? startPrice : null,
+        currentBid: isAuction ? startPrice : null,
+        bidUnit: isAuction ? Number(listingForm.bidUnit || 0) : null,
+        buyNowPrice: isAuction && listingForm.buyNowPrice ? Number(listingForm.buyNowPrice) : null,
+        auctionStartAt: isAuction ? listingForm.auctionStartAt : null,
+        auctionEndsAt: isAuction ? listingForm.auctionEndsAt : null,
+        auctionDesc: isAuction ? listingForm.auctionDesc : '',
+        bidCount: isAuction ? 0 : null,
+        highestBidderId: '',
+        highestBidderEmail: '',
+        highestBidderName: '',
+        auctionStatus: isAuction ? 'scheduled' : null,
         imageUrls,
         status: 'pending',
         featured: false,
@@ -360,6 +448,49 @@ export default function App() {
     }
   };
 
+  const updateCompanyLimit = async (companyId, nextLimit) => {
+    const limitNumber = Number(nextLimit);
+
+    if (limitNumber < DEFAULT_LISTING_LIMIT || limitNumber > MAX_LISTING_LIMIT) {
+      setNotice('매물 한도는 4개부터 20개까지만 설정할 수 있습니다.');
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'companies', companyId), { listingLimit: limitNumber });
+      setNotice(`매물 등록 한도를 ${limitNumber}개로 변경했습니다.`);
+    } catch (error) {
+      setNotice(error.message || '업체 한도 변경 중 오류가 발생했습니다.');
+    }
+  };
+
+  const renderFilterBox = (placeholder = '브랜드 / 연식 / 지역 검색') => (
+    <div className="glass-card" style={{ marginBottom: 20 }}>
+      <div className="grid-gap filter-grid">
+        <input className="field" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder={placeholder} />
+        <select className="select" value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
+          <option value="">브랜드 전체</option>
+          <option value="현대">현대</option>
+          <option value="두산">두산</option>
+          <option value="클라크">클라크</option>
+          <option value="도요타">도요타</option>
+          <option value="니찌유">니찌유</option>
+          <option value="스미토모">스미토모</option>
+          <option value="기타브랜드">기타브랜드</option>
+        </select>
+        <select className="select" value={tonFilter} onChange={(e) => setTonFilter(e.target.value)}>
+          <option value="">톤수 전체</option>
+          <option value="1.5톤">1.5톤</option>
+          <option value="2톤">2톤</option>
+          <option value="2.5톤">2.5톤</option>
+          <option value="3톤이상">3톤이상</option>
+          <option value="4.5톤이상">4.5톤이상</option>
+        </select>
+        <button className="btn btn-secondary" onClick={() => { setKeyword(''); setBrandFilter(''); setTonFilter(''); }}>필터 초기화</button>
+      </div>
+    </div>
+  );
+
   return (
     <Routes>
       <Route path="/" element={
@@ -400,6 +531,7 @@ export default function App() {
             .panel-title { font-size: 22px; font-weight: 900; margin: 0 0 18px; }
             .grid-gap { display: grid; gap: 12px; }
             .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+            .filter-grid { grid-template-columns: repeat(4, 1fr); }
             .field, .select, .textarea { width: 100%; padding: 14px 15px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); background: #060606; color: #fff; outline: none; }
             .textarea { min-height: 120px; resize: vertical; }
             .category-row { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
@@ -416,8 +548,6 @@ export default function App() {
             .image-preview-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
             .image-preview { height: 86px; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); }
             .image-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
-            .detail-image-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
-            .detail-image-grid img { width: 100%; height: 150px; object-fit: cover; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); }
             .listing-body { padding: 20px; }
             .listing-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
             .badge { display: inline-flex; padding: 7px 11px; border-radius: 999px; background: rgba(239,68,68,0.14); color: #fca5a5; font-size: 12px; font-weight: 900; }
@@ -427,6 +557,10 @@ export default function App() {
             .spec-box { padding: 14px; border-radius: 18px; background: rgba(255,255,255,0.05); }
             .spec-box span { display: block; color: #9ca3af; font-size: 12px; margin-bottom: 6px; }
             .spec-box strong { font-size: 14px; }
+            .auction-mini { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+            .auction-mini div { padding: 12px; border-radius: 16px; background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.18); }
+            .auction-mini span { display: block; color: #fca5a5; font-size: 12px; margin-bottom: 5px; }
+            .auction-mini strong { font-size: 13px; }
             .listing-footer { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
             .price-label { color: #9ca3af; font-size: 12px; }
             .price-value { color: #ef4444; font-size: 28px; font-weight: 900; margin-top: 4px; }
@@ -448,13 +582,18 @@ export default function App() {
             .small-actions { display: flex; gap: 8px; flex-wrap: wrap; }
             .small-actions button { padding: 10px 12px; border-radius: 12px; background: transparent; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
             .upload-box { border-radius: 18px; padding: 28px 16px; border: 1px dashed rgba(255,255,255,0.18); text-align: center; color: #9ca3af; background: rgba(255,255,255,0.03); }
+            .company-admin-grid { display: grid; gap: 14px; }
+            .company-card { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: center; padding: 18px; border-radius: 20px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+            .limit-control { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+            .limit-control select { max-width: 120px; }
             .footer { border-top: 1px solid rgba(255,255,255,0.08); padding: 28px 0; text-align: center; color: #9ca3af; font-size: 13px; }
             @media (max-width: 1024px) {
-              .hero-grid, .feature-grid, .listing-grid, .dashboard-grid, .three-col { grid-template-columns: 1fr 1fr; }
+              .hero-grid, .feature-grid, .listing-grid, .dashboard-grid, .three-col, .company-card { grid-template-columns: 1fr 1fr; }
             }
             @media (max-width: 720px) {
-              .hero-grid, .feature-grid, .listing-grid, .dashboard-grid, .three-col, .two-col { grid-template-columns: 1fr; }
+              .hero-grid, .feature-grid, .listing-grid, .dashboard-grid, .three-col, .two-col, .filter-grid, .company-card { grid-template-columns: 1fr; }
               .listing-footer, .list-item { flex-direction: column; align-items: flex-start; }
+              .limit-control { justify-content: flex-start; }
               .section-title { font-size: 30px; }
               .logo { font-size: 24px; }
             }
@@ -491,16 +630,16 @@ export default function App() {
                 <section className="hero">
                   <div className="container hero-grid">
                     <div>
-                      <div className="pill">업체 회원가입 · 매물 등록 · 문의 연결</div>
-                      <h1>지게차 매물 찾기부터<span>판매 · 렌탈 · 상담까지 한 번에</span></h1>
-                      <p>여러 판매업체가 직접 가입하고 매물을 등록할 수 있는 중고지게차 매물 플랫폼입니다. 승인 완료된 매물만 공개되며, 참여업체 수와 등록 매물 수가 실시간으로 반영됩니다.</p>
+                      <div className="pill">업체 회원가입 · 매물 등록 · 경매 입찰</div>
+                      <h1>지게차 매물 찾기부터<span>판매 · 경매 · 상담까지 한 번에</span></h1>
+                      <p>여러 판매업체가 직접 가입하고 일반 매물과 경매물품을 등록할 수 있는 중고지게차 매물 플랫폼입니다. 승인 완료된 매물만 공개됩니다.</p>
                       <div className="hero-actions">
                         <button className="btn btn-primary" onClick={() => setActiveTab('market')}>추천 매물 보기</button>
                         <button className="btn btn-secondary" onClick={() => setActiveTab('auction')}>경매물품 보기</button>
                         <button className="btn btn-secondary" onClick={() => setActiveTab('seller')}>업체 등록하기</button>
                       </div>
                       <div className="stats-grid">
-                        <StatCard label="등록 매물" value={`${visibleListings.length}+`} />
+                        <StatCard label="일반 매물" value={`${visibleListings.length}+`} />
                         <StatCard label="경매물품" value={`${auctionListings.length}+`} />
                         <StatCard label="참여 업체" value={`${companies.length}+`} />
                         <StatCard label="승인대기" value={`${pendingListings.length}+`} />
@@ -556,30 +695,7 @@ export default function App() {
               <section className="section">
                 <div className="container">
                   <SectionTitle eyebrow="Marketplace" title="전체 매물" subtitle="일반 판매 매물만 브랜드, 톤수, 키워드로 검색할 수 있습니다." />
-                  <div className="glass-card" style={{ marginBottom: 20 }}>
-                    <div className="grid-gap" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                      <input className="field" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="브랜드 / 연식 / 지역 검색" />
-                      <select className="select" value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
-                        <option value="">브랜드 전체</option>
-                        <option value="현대">현대</option>
-                        <option value="두산">두산</option>
-                        <option value="클라크">클라크</option>
-                        <option value="도요타">도요타</option>
-                        <option value="니찌유">니찌유</option>
-                        <option value="스미토모">스미토모</option>
-                        <option value="기타브랜드">기타브랜드</option>
-                      </select>
-                      <select className="select" value={tonFilter} onChange={(e) => setTonFilter(e.target.value)}>
-                        <option value="">톤수 전체</option>
-                        <option value="1.5톤">1.5톤</option>
-                        <option value="2톤">2톤</option>
-                        <option value="2.5톤">2.5톤</option>
-                        <option value="3톤이상">3톤이상</option>
-                        <option value="4.5톤이상">4.5톤이상</option>
-                      </select>
-                      <button className="btn btn-secondary" onClick={() => { setKeyword(''); setBrandFilter(''); setTonFilter(''); }}>필터 초기화</button>
-                    </div>
-                  </div>
+                  {renderFilterBox()}
                   <div className="listing-grid">
                     {filteredListings.length ? filteredListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
                   </div>
@@ -591,30 +707,7 @@ export default function App() {
               <section className="section">
                 <div className="container">
                   <SectionTitle eyebrow="Auction Market" title="경매물품" subtitle="입찰 방식으로 진행되는 중고지게차 경매 물품입니다." />
-                  <div className="glass-card" style={{ marginBottom: 20 }}>
-                    <div className="grid-gap" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                      <input className="field" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="브랜드 / 연식 / 지역 검색" />
-                      <select className="select" value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
-                        <option value="">브랜드 전체</option>
-                        <option value="현대">현대</option>
-                        <option value="두산">두산</option>
-                        <option value="클라크">클라크</option>
-                        <option value="도요타">도요타</option>
-                        <option value="니찌유">니찌유</option>
-                        <option value="스미토모">스미토모</option>
-                        <option value="기타브랜드">기타브랜드</option>
-                      </select>
-                      <select className="select" value={tonFilter} onChange={(e) => setTonFilter(e.target.value)}>
-                        <option value="">톤수 전체</option>
-                        <option value="1.5톤">1.5톤</option>
-                        <option value="2톤">2톤</option>
-                        <option value="2.5톤">2.5톤</option>
-                        <option value="3톤이상">3톤이상</option>
-                        <option value="4.5톤이상">4.5톤이상</option>
-                      </select>
-                      <button className="btn btn-secondary" onClick={() => { setKeyword(''); setBrandFilter(''); setTonFilter(''); }}>필터 초기화</button>
-                    </div>
-                  </div>
+                  {renderFilterBox()}
                   <div className="listing-grid">
                     {filteredAuctionListings.length ? filteredAuctionListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} />) : <div className="glass-card">현재 등록된 경매물품이 없습니다.</div>}
                   </div>
@@ -658,9 +751,32 @@ export default function App() {
             {activeTab === 'register' && (
               <section className="section">
                 <div className="container">
-                  <SectionTitle eyebrow="Listing Form" title="매물 등록" subtitle="로그인한 업체 회원만 등록할 수 있고, 등록 후 관리자 승인 뒤 공개됩니다." />
+                  <SectionTitle eyebrow="Listing Form" title="매물 등록" subtitle="일반 판매 또는 경매물품을 선택해 등록할 수 있습니다. 등록 후 관리자 승인 뒤 공개됩니다." />
                   <div className="feature-grid">
                     <form className="dark-card grid-gap" onSubmit={handleCreateListing}>
+                      {currentCompany ? (
+                        <div className="notice" style={{ marginTop: 0 }}>
+                          현재 등록 {getCompanyListingCount(currentCompany)}개 / 한도 {getCompanyLimit(currentCompany)}개
+                        </div>
+                      ) : null}
+
+                      <div className="two-col">
+                        <button
+                          type="button"
+                          className={listingForm.saleType === 'normal' ? 'btn btn-primary' : 'btn btn-secondary'}
+                          onClick={() => setListingForm({ ...listingForm, saleType: 'normal' })}
+                        >
+                          일반 판매
+                        </button>
+                        <button
+                          type="button"
+                          className={listingForm.saleType === 'auction' ? 'btn btn-primary' : 'btn btn-secondary'}
+                          onClick={() => setListingForm({ ...listingForm, saleType: 'auction' })}
+                        >
+                          경매 판매
+                        </button>
+                      </div>
+
                       <input className="field" value={listingForm.title} onChange={(e) => setListingForm({ ...listingForm, title: e.target.value })} placeholder="모델명 입력" />
                       <div className="two-col">
                         <input className="field" value={listingForm.brand} onChange={(e) => setListingForm({ ...listingForm, brand: e.target.value })} placeholder="브랜드" />
@@ -675,7 +791,33 @@ export default function App() {
                         <input className="field" value={listingForm.location} onChange={(e) => setListingForm({ ...listingForm, location: e.target.value })} placeholder="지역" />
                       </div>
                       <input className="field" value={listingForm.battery} onChange={(e) => setListingForm({ ...listingForm, battery: e.target.value })} placeholder="배터리 상태 / 주요 옵션" />
-                      <input className="field" value={listingForm.price} onChange={(e) => setListingForm({ ...listingForm, price: e.target.value })} placeholder="판매가 입력 (만원 단위)" />
+
+                      {listingForm.saleType === 'normal' ? (
+                        <input className="field" value={listingForm.price} onChange={(e) => setListingForm({ ...listingForm, price: e.target.value })} placeholder="판매가 입력 (만원 단위)" type="number" />
+                      ) : (
+                        <div className="glass-card" style={{ padding: 16 }}>
+                          <h3 className="flow-title">경매 설정</h3>
+                          <div className="grid-gap" style={{ marginTop: 14 }}>
+                            <div className="two-col">
+                              <input className="field" value={listingForm.auctionStartPrice} onChange={(e) => setListingForm({ ...listingForm, auctionStartPrice: e.target.value })} placeholder="시작가 (만원)" type="number" />
+                              <input className="field" value={listingForm.buyNowPrice} onChange={(e) => setListingForm({ ...listingForm, buyNowPrice: e.target.value })} placeholder="즉시구매가 (만원, 선택)" type="number" />
+                            </div>
+                            <input className="field" value={listingForm.bidUnit} onChange={(e) => setListingForm({ ...listingForm, bidUnit: e.target.value })} placeholder="입찰 단위 (만원) 예: 10" type="number" />
+                            <div className="two-col">
+                              <div>
+                                <div className="list-meta" style={{ marginBottom: 6 }}>경매 시작시간</div>
+                                <input className="field" value={listingForm.auctionStartAt} onChange={(e) => setListingForm({ ...listingForm, auctionStartAt: e.target.value })} type="datetime-local" />
+                              </div>
+                              <div>
+                                <div className="list-meta" style={{ marginBottom: 6 }}>경매 종료시간</div>
+                                <input className="field" value={listingForm.auctionEndsAt} onChange={(e) => setListingForm({ ...listingForm, auctionEndsAt: e.target.value })} type="datetime-local" />
+                              </div>
+                            </div>
+                            <textarea className="textarea" value={listingForm.auctionDesc} onChange={(e) => setListingForm({ ...listingForm, auctionDesc: e.target.value })} placeholder="경매 설명 / 입찰 유의사항" />
+                          </div>
+                        </div>
+                      )}
+
                       <textarea className="textarea" value={listingForm.description} onChange={(e) => setListingForm({ ...listingForm, description: e.target.value })} placeholder="매물 설명" />
                       <input
                         className="field"
@@ -699,10 +841,10 @@ export default function App() {
                     <div className="glass-card">
                       <h3 className="flow-title">등록 안내</h3>
                       <div style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.9 }}>
-                        <p>로그인한 업체 회원만 매물을 등록할 수 있습니다.</p>
-                        <p>등록 직후 상태는 승인대기이며, 관리자 승인 후 사용자 화면에 공개됩니다.</p>
-                        <p>승인대기 매물은 관리자 모드에서만 볼 수 있습니다.</p>
-                        <p>경매물품 등록 기능은 다음 단계에서 추가하면 됩니다.</p>
+                        <p>업체 회원은 일반 판매와 경매 판매를 선택해 등록할 수 있습니다.</p>
+                        <p>모든 매물은 등록 직후 승인대기 상태이며, 관리자 승인 후 공개됩니다.</p>
+                        <p>기본 등록 한도는 업체당 4개이며, 관리자가 최대 20개까지 조정할 수 있습니다.</p>
+                        <p>경매물품은 경매물품 탭에만 노출됩니다.</p>
                       </div>
                     </div>
                   </div>
@@ -715,7 +857,7 @@ export default function App() {
                 <div className="container">
                   <SectionTitle eyebrow="Seller Dashboard" title={`${currentCompany.companyName} 판매업체 관리`} subtitle="내 매물 등록 현황과 상태를 한눈에 확인할 수 있습니다." />
                   <div className="dashboard-grid">
-                    <StatCard label="전체 매물" value={dashboardStats.totalListings} />
+                    <StatCard label="전체 매물" value={`${dashboardStats.totalListings}/${getCompanyLimit(currentCompany)}`} />
                     <StatCard label="노출중" value={dashboardStats.activeCount} />
                     <StatCard label="승인대기" value={dashboardStats.pendingCount} />
                     <StatCard label="판매완료" value={dashboardStats.soldCount} />
@@ -730,7 +872,7 @@ export default function App() {
                         <div key={item.id} className="list-item">
                           <div>
                             <div style={{ fontSize: 20, fontWeight: 900 }}>{item.title}</div>
-                            <div className="list-meta">{item.year}년식 · {item.ton} · {item.mast} · {item.price}만원</div>
+                            <div className="list-meta">{item.saleType === 'auction' ? '경매' : '일반'} · {item.year}년식 · {item.ton} · {item.mast} · {item.price}만원</div>
                           </div>
                           <div>
                             <div className={`status-badge ${item.status === 'active' ? 'status-active' : item.status === 'pending' ? 'status-pending' : item.status === 'sold' ? 'status-sold' : 'status-rejected'}`}>
@@ -741,7 +883,7 @@ export default function App() {
                             </div>
                           </div>
                         </div>
-                      )) : <div className="glass-card">현재 승인대기 매물이 없습니다.</div>}
+                      )) : <div className="glass-card">현재 등록된 매물이 없습니다.</div>}
                     </div>
                   </div>
                 </div>
@@ -751,15 +893,24 @@ export default function App() {
             {activeTab === 'admin' && isAdmin && (
               <section className="section">
                 <div className="container">
-                  <SectionTitle eyebrow="Admin Mode" title="관리자 승인 관리" subtitle="승인대기 매물만 확인하고 승인 또는 반려할 수 있습니다." />
+                  <SectionTitle eyebrow="Admin Mode" title="관리자 승인 · 업체 관리" subtitle="승인대기 매물 확인, 업체 정보 확인, 업체별 등록 한도 설정을 할 수 있습니다." />
+
                   <div className="dark-card">
-                    <div className="list-stack">
+                    <h3 className="flow-title">승인대기 매물</h3>
+                    <div className="list-stack" style={{ marginTop: 18 }}>
                       {pendingListings.length ? pendingListings.map((item) => (
                         <div key={item.id} className="list-item">
                           <div>
                             <div style={{ fontSize: 20, fontWeight: 900 }}>{item.title}</div>
-                            <div className="list-meta">{item.sellerName} · {item.brand} · {item.ton} · {item.year} · {item.price}만원</div>
-                            <div className="list-meta">{item.description || '설명 없음'}</div>
+                            <div className="list-meta">
+                              {item.saleType === 'auction' ? '경매물품' : '일반매물'} · {item.sellerName} · {item.brand} · {item.ton} · {item.year} · {item.price}만원
+                            </div>
+                            {item.saleType === 'auction' ? (
+                              <div className="list-meta">
+                                시작가 {item.auctionStartPrice}만원 · 현재가 {item.currentBid}만원 · 입찰단위 {item.bidUnit}만원 · 종료 {item.auctionEndsAt}
+                              </div>
+                            ) : null}
+                            <div className="list-meta">{item.description || item.auctionDesc || '설명 없음'}</div>
                           </div>
                           <div className="small-actions">
                             <button onClick={() => approveListing(item.id)}>승인</button>
@@ -768,6 +919,41 @@ export default function App() {
                           </div>
                         </div>
                       )) : <div className="glass-card">현재 승인대기 매물이 없습니다.</div>}
+                    </div>
+                  </div>
+
+                  <div className="dark-card" style={{ marginTop: 22 }}>
+                    <h3 className="flow-title">업체 정보 · 등록 한도 관리</h3>
+                    <div className="company-admin-grid" style={{ marginTop: 18 }}>
+                      {companies.length ? companies.map((company) => {
+                        const usedCount = getCompanyListingCount(company);
+                        const limit = getCompanyLimit(company);
+
+                        return (
+                          <div key={company.id} className="company-card">
+                            <div>
+                              <div style={{ fontSize: 20, fontWeight: 900 }}>{company.companyName || '업체명 없음'}</div>
+                              <div className="list-meta">담당자: {company.name || '-'}</div>
+                              <div className="list-meta">연락처: {company.phone || '-'}</div>
+                              <div className="list-meta">이메일: {company.email || '-'}</div>
+                              <div className="list-meta">지역: {company.region || '-'} · 업종: {company.businessType || '-'}</div>
+                              <div className="list-meta">권한: {company.role || 'seller'}</div>
+                            </div>
+                            <div className="limit-control">
+                              <div style={{ fontWeight: 900 }}>등록 {usedCount}개 / 한도 {limit}개</div>
+                              <select
+                                className="select"
+                                value={limit}
+                                onChange={(e) => updateCompanyLimit(company.id, e.target.value)}
+                              >
+                                {Array.from({ length: MAX_LISTING_LIMIT - DEFAULT_LISTING_LIMIT + 1 }, (_, index) => DEFAULT_LISTING_LIMIT + index).map((num) => (
+                                  <option key={num} value={num}>{num}개</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        );
+                      }) : <div className="glass-card">가입된 업체가 없습니다.</div>}
                     </div>
                   </div>
                 </div>
