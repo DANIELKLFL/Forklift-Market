@@ -29,6 +29,14 @@ const DEFAULT_LISTING_LIMIT = 4;
 const MAX_LISTING_LIMIT = 20;
 const LISTINGS_PAGE_SIZE = 12;
 
+const BATTERY_GRADE_INFO = {
+  '신품': '배터리 교체 후 6개월 이내 또는 신품급 상태입니다. 장시간 작업에 가장 적합합니다.',
+  'A급': '사용 가능 시간이 약 80~95% 수준입니다. 일반적인 하루 작업에 무리가 적은 양호한 상태입니다.',
+  'B급': '사용 가능 시간이 약 60~80% 수준입니다. 작업은 가능하지만 사용환경에 따라 중간 충전이 필요할 수 있습니다.',
+  'C급': '사용 가능 시간이 약 40~60% 수준입니다. 작업 시간이 짧고 배터리 교체를 고려해야 하는 상태입니다.',
+  '폐품': '사용 가능 시간이 약 40% 이하이거나 셀 불량 가능성이 높은 상태입니다. 배터리 교체가 필요한 수준입니다.',
+};
+
 const initialForm = {
   saleType: 'normal',
   title: '',
@@ -1241,18 +1249,25 @@ export default function App() {
                         />
                       </div>
                       <div className="two-col">
-                        <select
-                          className="select"
-                          value={listingForm.battery}
-                          onChange={(e) => setListingForm({ ...listingForm, battery: e.target.value })}
-                        >
-                          <option value="">배터리 상태 선택</option>
-                          <option value="신품">신품</option>
-                          <option value="A급">A급</option>
-                          <option value="B급">B급</option>
-                          <option value="C급">C급</option>
-                          <option value="폐품">폐품</option>
-                        </select>
+                        <div>
+                          <select
+                            className="select"
+                            value={listingForm.battery}
+                            onChange={(e) => setListingForm({ ...listingForm, battery: e.target.value })}
+                          >
+                            <option value="">배터리 상태 선택</option>
+                            <option value="신품">신품</option>
+                            <option value="A급">A급</option>
+                            <option value="B급">B급</option>
+                            <option value="C급">C급</option>
+                            <option value="폐품">폐품</option>
+                          </select>
+                          {listingForm.battery && (
+                            <div className="list-meta" style={{ marginTop: 8, lineHeight: 1.6 }}>
+                              소비자 기준: {BATTERY_GRADE_INFO[listingForm.battery]}
+                            </div>
+                          )}
+                        </div>
                         <select
                           className="select"
                           value={listingForm.option || ''}
@@ -1373,6 +1388,7 @@ export default function App() {
                       <h3 className="flow-title">등록 안내</h3>
                       <div style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.9 }}>
                         <p>업체 회원은 일반 판매와 경매 판매를 선택해 등록할 수 있습니다.</p>
+                        <p>배터리 등급은 소비자 기준으로 표시됩니다: 신품(신품급), A급(80~95%), B급(60~80%), C급(40~60%), 폐품(40% 이하).</p>
                         <p>모든 매물은 등록 직후 승인대기 상태이며, 관리자 승인 후 공개됩니다.</p>
                         <p>기본 등록 한도는 업체당 4개이며, 관리자가 최대 20개까지 조정할 수 있습니다.</p>
                         <p>경매물품은 경매물품 탭에만 노출됩니다.</p>
