@@ -524,7 +524,8 @@ if (imageFiles && imageFiles.length > 0) {
         highestBidderName: '',
         auctionStatus: isAuction ? 'scheduled' : null,
         imageUrls,
-        status: 'pending',
+thumbnailUrls,
+status: 'pending',
         featured: false,
         createdAt: serverTimestamp(),
       });
