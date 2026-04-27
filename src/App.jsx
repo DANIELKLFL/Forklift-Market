@@ -930,7 +930,20 @@ export default function App() {
                 <section className="hero">
                   <div className="container hero-grid">
                     <div>
-                      <div className="pill">업체 회원가입 · 매물 등록 · 경매 입찰</div>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <div className="pill">업체 회원가입 · 매물 등록 · 경매 입찰</div>
+                        <div style={{
+                          padding: '9px 14px',
+                          borderRadius: 999,
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          color: '#fff',
+                          fontSize: 13,
+                          fontWeight: 900
+                        }}>
+                          방문자 {visitorCount.toLocaleString()}명
+                        </div>
+                      </div>
                       <h1>지게차 매물 찾기부터<span>판매 · 경매 · 상담까지 한 번에</span></h1>
                       <p>여러 판매업체가 직접 가입하고 일반 매물과 경매물품을 등록할 수 있는 중고지게차 매물 플랫폼입니다. 승인 완료된 매물만 공개됩니다.</p>
                       <div className="hero-actions">
