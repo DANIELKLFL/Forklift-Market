@@ -455,6 +455,7 @@ export default function App() {
         region: signupForm.region,
         businessType: memberType === 'seller' ? signupForm.businessType : '소비자',
         listingLimit: memberType === 'seller' ? DEFAULT_LISTING_LIMIT : 0,
+        sellerPostingAllowed: memberType === 'seller' ? true : false,
         auctionVerified: memberType === 'buyer' ? false : true,
         bidDepositPaid: memberType === 'buyer' ? false : true,
         role: ADMIN_EMAILS.includes(signupForm.email) ? 'admin' : memberType,
@@ -506,6 +507,12 @@ export default function App() {
 
     if (currentCompany.memberType === 'buyer') {
       setNotice('소비자 회원은 매물을 등록할 수 없습니다. 업체회원만 등록 가능합니다.');
+      setUploading(false);
+      return;
+    }
+
+    if (currentCompany.sellerPostingAllowed === false) {
+      setNotice('관리자에 의해 매물등록이 일시 중지된 업체회원입니다. 관리자에게 문의해주세요.');
       setUploading(false);
       return;
     }
@@ -792,6 +799,15 @@ export default function App() {
       setNotice(`매물 등록 한도를 ${limitNumber}개로 변경했습니다.`);
     } catch (error) {
       setNotice(error.message || '업체 한도 변경 중 오류가 발생했습니다.');
+    }
+  };
+
+  const updateCompanyPermission = async (companyId, data, successMessage) => {
+    try {
+      await updateDoc(doc(db, 'companies', companyId), data);
+      setNotice(successMessage);
+    } catch (error) {
+      setNotice(error.message || '회원 권한 변경 중 오류가 발생했습니다.');
     }
   };
 
@@ -1561,10 +1577,47 @@ export default function App() {
                             </div>
                             <div className="limit-control">
                               {company.memberType === 'buyer' ? (
-                                <div style={{ fontWeight: 900 }}>소비자회원 · 매물등록 불가</div>
+                                <div style={{ display: 'grid', gap: 10, justifyItems: 'end' }}>
+                                  <div style={{ fontWeight: 900 }}>소비자회원 · 경매참여 관리</div>
+                                  <div className="list-meta">
+                                    경매인증: {company.auctionVerified ? '완료' : '미완료'} · 보증금: {company.bidDepositPaid ? '확인완료' : '미확인'}
+                                  </div>
+                                  <div className="small-actions" style={{ justifyContent: 'flex-end' }}>
+                                    <button
+                                      onClick={() => updateCompanyPermission(
+                                        company.id,
+                                        { auctionVerified: !company.auctionVerified },
+                                        company.auctionVerified ? '경매 인증을 해제했습니다.' : '경매 인증을 완료했습니다.'
+                                      )}
+                                    >
+                                      {company.auctionVerified ? '경매인증 해제' : '경매인증 승인'}
+                                    </button>
+                                    <button
+                                      onClick={() => updateCompanyPermission(
+                                        company.id,
+                                        { bidDepositPaid: !company.bidDepositPaid },
+                                        company.bidDepositPaid ? '입찰보증금 확인을 해제했습니다.' : '입찰보증금 확인 완료 처리했습니다.'
+                                      )}
+                                    >
+                                      {company.bidDepositPaid ? '보증금 해제' : '보증금 확인'}
+                                    </button>
+                                  </div>
+                                </div>
                               ) : (
                                 <>
                                   <div style={{ fontWeight: 900 }}>등록 {usedCount}개 / 한도 {limit}개</div>
+                                  <div className="list-meta">
+                                    등록권한: {company.sellerPostingAllowed === false ? '중지' : '허용'}
+                                  </div>
+                                  <button
+                                    onClick={() => updateCompanyPermission(
+                                      company.id,
+                                      { sellerPostingAllowed: company.sellerPostingAllowed === false ? true : false },
+                                      company.sellerPostingAllowed === false ? '업체 매물등록을 허용했습니다.' : '업체 매물등록을 중지했습니다.'
+                                    )}
+                                  >
+                                    {company.sellerPostingAllowed === false ? '등록 허용' : '등록 중지'}
+                                  </button>
                                   <select
                                     className="select"
                                     value={limit}
