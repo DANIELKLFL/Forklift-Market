@@ -879,8 +879,9 @@ export default function App() {
                               {item.status === 'active' ? '노출중' : item.status === 'pending' ? '승인대기' : item.status === 'sold' ? '판매완료' : '반려'}
                             </div>
                             <div className="small-actions" style={{ marginTop: 10 }}>
-                              <button onClick={() => updateMyListingStatus(item.id, 'sold')}>판매완료</button>
-                            </div>
+  <button onClick={() => updateMyListingStatus(item.id, 'sold')}>판매완료</button>
+  <button onClick={() => deleteListing(item.id)}>삭제</button>
+</div>
                           </div>
                         </div>
                       )) : <div className="glass-card">현재 등록된 매물이 없습니다.</div>}
