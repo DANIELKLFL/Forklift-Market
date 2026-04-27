@@ -19,7 +19,7 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import ListingDetail from './ListingDetail';
@@ -147,6 +147,25 @@ async function compressImageFile(file, maxWidth = 1200, quality = 0.72) {
   });
 }
 
+function uploadFileWithProgress(storageRef, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const task = uploadBytesResumable(storageRef, file);
+
+    task.on(
+      'state_changed',
+      (snapshot) => {
+        const percent = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+        onProgress?.(percent);
+      },
+      reject,
+      async () => {
+        const url = await getDownloadURL(task.snapshot.ref);
+        resolve(url);
+      }
+    );
+  });
+}
+
 function ListingCard({ item, isAdmin, onDelete }) {
   const navigate = useNavigate();
 
@@ -231,6 +250,7 @@ export default function App() {
   const [listingForm, setListingForm] = useState(initialForm);
   const [notice, setNotice] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [imageFiles, setImageFiles] = useState([]);
   const [memberType, setMemberType] = useState('seller');
   const [marketVisibleCount, setMarketVisibleCount] = useState(LISTINGS_PAGE_SIZE);
@@ -442,6 +462,7 @@ export default function App() {
       setNotice(error.message || '매물 등록 중 오류가 발생했습니다.');
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -466,6 +487,7 @@ export default function App() {
   const handleCreateListing = async (e) => {
     if (uploading) return;
     setUploading(true);
+    setUploadProgress(0);
     e.preventDefault();
 
     if (!currentUser || !currentCompany) {
@@ -513,6 +535,12 @@ export default function App() {
       const isAuction = listingForm.saleType === 'auction';
       const startPrice = Number(listingForm.auctionStartPrice || 0);
       const selectedFiles = imageFiles.slice(0, 5);
+      const totalUploadSteps = Math.max(1, selectedFiles.length * 2);
+      let finishedUploadSteps = 0;
+      const updateProgress = () => {
+        finishedUploadSteps += 1;
+        setUploadProgress(Math.min(99, Math.round((finishedUploadSteps / totalUploadSteps) * 100)));
+      };
 
       // 1단계: 매물 정보부터 먼저 저장합니다. 사진은 잠시 후 자동으로 붙습니다.
       const listingDocRef = await addDoc(collection(db, 'listings'), {
@@ -562,49 +590,50 @@ export default function App() {
         });
       }
 
-      // 2단계: 사진은 뒤에서 따로 업로드합니다. 그래서 사용자는 바로 다음 작업을 할 수 있습니다.
+      // 2단계: 사진 업로드까지 완료한 뒤 매물에 붙입니다. 안정형 방식입니다.
       if (selectedFiles.length > 0) {
-        Promise.all(
-          selectedFiles.map(async (file) => {
-            const compressedFile = await compressImageFile(file, 1200, 0.72);
-            const thumbnailFile = await compressImageFile(file, 420, 0.62);
+        try {
+          const uploadedImages = await Promise.all(
+            selectedFiles.map(async (file) => {
+              const compressedFile = await compressImageFile(file, 1200, 0.72);
+              const thumbnailFile = await compressImageFile(file, 420, 0.62);
 
-            const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            const safeImageName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
-            const safeThumbName = thumbnailFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+              const timeKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              const safeImageName = compressedFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
+              const safeThumbName = thumbnailFile.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
 
-            const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
-            const thumbRef = ref(storage, `listings/${currentUser.uid}/thumbs/${timeKey}-${safeThumbName}`);
+              const imageRef = ref(storage, `listings/${currentUser.uid}/images/${timeKey}-${safeImageName}`);
+              const thumbRef = ref(storage, `listings/${currentUser.uid}/thumbs/${timeKey}-${safeThumbName}`);
 
-            await uploadBytes(imageRef, compressedFile);
-            await uploadBytes(thumbRef, thumbnailFile);
+              const imageUrl = await uploadFileWithProgress(imageRef, compressedFile, () => {});
+              updateProgress();
+              const thumbnailUrl = await uploadFileWithProgress(thumbRef, thumbnailFile, () => {});
+              updateProgress();
 
-            const imageUrl = await getDownloadURL(imageRef);
-            const thumbnailUrl = await getDownloadURL(thumbRef);
+              return { imageUrl, thumbnailUrl };
+            })
+          );
 
-            return { imageUrl, thumbnailUrl };
-          })
-        )
-          .then(async (uploadedImages) => {
-            await updateDoc(doc(db, 'listings', listingDocRef.id), {
-              imageUrls: uploadedImages.map((image) => image.imageUrl),
-              thumbnailUrls: uploadedImages.map((image) => image.thumbnailUrl),
-              imageUploadStatus: 'done',
-              imageUploadedAt: serverTimestamp(),
-            });
-          })
-          .catch(async (error) => {
-            console.error('사진 업로드 오류:', error);
-            await updateDoc(doc(db, 'listings', listingDocRef.id), {
-              imageUploadStatus: 'error',
-            });
+          await updateDoc(doc(db, 'listings', listingDocRef.id), {
+            imageUrls: uploadedImages.map((image) => image.imageUrl),
+            thumbnailUrls: uploadedImages.map((image) => image.thumbnailUrl),
+            imageUploadStatus: 'done',
+            imageUploadedAt: serverTimestamp(),
           });
+        } catch (error) {
+          console.error('사진 업로드 오류:', error);
+          await updateDoc(doc(db, 'listings', listingDocRef.id), {
+            imageUploadStatus: 'error',
+          });
+          throw new Error('매물 정보는 저장됐지만 사진 업로드에 실패했습니다. 사진 용량을 줄여 다시 시도해주세요.');
+        }
       }
 
       setListingForm(initialForm);
       setImageFiles([]);
-      setNotice(selectedFiles.length ? '매물 정보가 먼저 저장되었습니다. 사진은 뒤에서 자동 업로드 중입니다. 내 매물관리로 이동합니다.' : '매물 등록이 완료되었습니다. 내 매물관리로 이동합니다.');
-      window.alert(selectedFiles.length ? '매물 정보 저장 완료! 사진은 뒤에서 자동 업로드됩니다. 내 매물관리로 이동합니다.' : '매물 등록 완료! 내 매물관리로 이동합니다.');
+      setUploadProgress(100);
+      setNotice(selectedFiles.length ? '사진 업로드까지 완료되었습니다. 내 매물관리로 이동합니다.' : '매물 등록이 완료되었습니다. 내 매물관리로 이동합니다.');
+      window.alert(selectedFiles.length ? '사진 업로드까지 완료되었습니다! 내 매물관리로 이동합니다.' : '매물 등록 완료! 내 매물관리로 이동합니다.');
       setActiveTab('dashboard');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
@@ -1381,8 +1410,18 @@ export default function App() {
                         </div>
                       ) : null}
                       <button className="btn btn-primary" disabled={uploading}>
-  {uploading ? '사진 업로드 중입니다...' : '매물 등록 신청'}
+  {uploading ? `사진 업로드 중입니다... ${uploadProgress}%` : '매물 등록 신청'}
 </button>
+{uploading && (
+  <div style={{ marginTop: 8 }}>
+    <div style={{ height: 8, background: 'rgba(255,255,255,0.12)', borderRadius: 999, overflow: 'hidden' }}>
+      <div style={{ width: `${uploadProgress}%`, height: '100%', background: '#dc2626', transition: 'width 0.2s ease' }} />
+    </div>
+    <div className="list-meta" style={{ marginTop: 6 }}>
+      사진 압축과 업로드를 진행 중입니다. 완료되면 자동으로 내 매물관리로 이동합니다.
+    </div>
+  </div>
+)
                     </form>
                     <div className="glass-card">
                       <h3 className="flow-title">등록 안내</h3>
