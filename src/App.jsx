@@ -1103,6 +1103,28 @@ export default function App() {
               .btn { padding: 12px 15px; border-radius: 13px; }
               .image-preview-grid { grid-template-columns: repeat(3, 1fr); }
             }
+            /* ===== 모바일 요청사항: 방문자 줄바꿈 방지 + 매물카드 가로형 ===== */
+            .nav > div { white-space: nowrap; word-break: keep-all; flex-shrink: 0; }
+            @media (max-width: 720px) {
+              .nav > div { font-size: 12px !important; padding: 8px 10px !important; border-radius: 12px !important; }
+              .listing-grid { gap: 12px; }
+              .listing-card { display: grid; grid-template-columns: 122px 1fr; border-radius: 18px; min-height: 156px; }
+              .listing-image { height: 100% !important; min-height: 156px; }
+              .listing-body { padding: 12px !important; min-width: 0; }
+              .listing-topline { gap: 6px; justify-content: flex-start; }
+              .seller-name { display: none; }
+              .badge { font-size: 11px; padding: 5px 8px; }
+              .listing-title { font-size: 17px !important; line-height: 1.3; margin-top: 8px !important; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+              .listing-spec-grid { grid-template-columns: 1fr !important; gap: 6px !important; margin-top: 10px !important; }
+              .spec-box { display: flex; justify-content: space-between; align-items: center; padding: 7px 9px !important; border-radius: 10px !important; gap: 8px; }
+              .spec-box span { margin-bottom: 0 !important; font-size: 11px !important; flex-shrink: 0; }
+              .spec-box strong { font-size: 12px !important; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+              .listing-footer { margin-top: 10px !important; gap: 8px !important; flex-direction: row !important; align-items: center !important; }
+              .price-label { font-size: 11px !important; }
+              .price-value { font-size: 20px !important; white-space: nowrap; }
+              .listing-footer .btn { width: auto !important; padding: 8px 9px !important; font-size: 12px !important; border-radius: 10px !important; white-space: nowrap; }
+            }
+
           `}</style>
 
           <div className="app-shell">
@@ -1122,7 +1144,10 @@ export default function App() {
                     fontSize: 15,
                     fontWeight: 900,
                     display: 'flex',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    whiteSpace: 'nowrap',
+                    wordBreak: 'keep-all',
+                    flexShrink: 0
                   }}>
                     방문자 {visitorCount.toLocaleString()}명
                   </div>
@@ -1159,7 +1184,10 @@ export default function App() {
                           border: '1px solid rgba(255,255,255,0.12)',
                           color: '#fff',
                           fontSize: 13,
-                          fontWeight: 900
+                          fontWeight: 900,
+                          whiteSpace: 'nowrap',
+                          wordBreak: 'keep-all',
+                          flexShrink: 0
                         }}>
                           방문자 {visitorCount.toLocaleString()}명
                         </div>
