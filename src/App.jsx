@@ -8,6 +8,7 @@ import {
 import {
   addDoc,
   collection,
+  getDoc,
   getDocs,
   deleteDoc,
   doc,
@@ -555,6 +556,30 @@ export default function App() {
     setActiveTab('home');
   };
 
+  const handleImageFilesChange = async (e) => {
+    const pickedFiles = Array.from(e.target.files || []).slice(0, 5);
+
+    if (!pickedFiles.length) {
+      setImageFiles([]);
+      return;
+    }
+
+    try {
+      setNotice('사진을 등록 준비 중입니다. 잠시만 기다려주세요.');
+      const preparedFiles = await Promise.all(
+        pickedFiles.map((file) => compressImageFile(file, 1200, 0.72))
+      );
+      setImageFiles(preparedFiles);
+      setNotice(`${preparedFiles.length}장 사진이 선택되었습니다.`);
+    } catch (error) {
+      console.error('모바일 사진 준비 오류:', error);
+      setImageFiles(pickedFiles);
+      setNotice('사진 압축은 건너뛰고 원본 사진으로 등록 준비했습니다.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   const handleCreateListing = async (e) => {
     e.preventDefault();
 
@@ -562,27 +587,41 @@ export default function App() {
     setUploading(true);
     setUploadProgress(0);
 
-    if (!currentUser || !currentCompany) {
-      setNotice('로그인한 업체 회원만 등록할 수 있습니다.');
+    let companyForSubmit = currentCompany;
+
+    if (currentUser && !companyForSubmit) {
+      try {
+        const companySnap = await getDoc(doc(db, 'companies', currentUser.uid));
+        if (companySnap.exists()) {
+          companyForSubmit = { id: companySnap.id, ...companySnap.data() };
+          setCurrentCompany(companyForSubmit);
+        }
+      } catch (error) {
+        console.error('회원정보 재확인 오류:', error);
+      }
+    }
+
+    if (!currentUser || !companyForSubmit) {
+      setNotice('업체 회원정보 확인이 늦어지고 있습니다. 로그인 상태 확인 후 다시 눌러주세요.');
       setActiveTab('seller');
       setUploading(false);
       return;
     }
 
-    if (currentCompany.memberType === 'buyer') {
+    if (companyForSubmit.memberType === 'buyer') {
       setNotice('소비자 회원은 매물을 등록할 수 없습니다. 업체회원만 등록 가능합니다.');
       setUploading(false);
       return;
     }
 
-    if (currentCompany.sellerPostingAllowed === false) {
+    if (companyForSubmit.sellerPostingAllowed === false) {
       setNotice('관리자에 의해 매물등록이 일시 중지된 업체회원입니다. 관리자에게 문의해주세요.');
       setUploading(false);
       return;
     }
 
-    const currentCount = getCompanyListingCount(currentCompany);
-    const limit = getCompanyLimit(currentCompany);
+    const currentCount = getCompanyListingCount(companyForSubmit);
+    const limit = getCompanyLimit(companyForSubmit);
 
     if (currentCount >= limit) {
       setNotice(`현재 등록 가능 한도는 ${limit}개입니다. 관리자에게 한도 상향을 요청해주세요.`);
@@ -641,10 +680,10 @@ export default function App() {
 
       // 2단계: 사진 URL을 포함해서 매물을 저장합니다.
       const listingDocRef = await addDoc(collection(db, 'listings'), {
-        companyId: currentCompany.id,
+        companyId: companyForSubmit.id,
         authUserId: currentUser.uid,
-        sellerName: currentCompany.companyName,
-        sellerPhone: currentCompany.phone || '',
+        sellerName: companyForSubmit.companyName,
+        sellerPhone: companyForSubmit.phone || '',
         title: listingForm.title,
         brand: listingForm.brand,
         ton: listingForm.ton,
@@ -681,7 +720,7 @@ export default function App() {
       if (listingForm.dealerPrice) {
         await setDoc(doc(db, 'dealerPrices', listingDocRef.id), {
           listingId: listingDocRef.id,
-          companyId: currentCompany.id,
+          companyId: companyForSubmit.id,
           authUserId: currentUser.uid,
           dealerPrice: Number(listingForm.dealerPrice),
           createdAt: serverTimestamp(),
@@ -1102,6 +1141,41 @@ export default function App() {
               .field, .select, .textarea { padding: 12px; border-radius: 13px; font-size: 14px; }
               .btn { padding: 12px 15px; border-radius: 13px; }
               .image-preview-grid { grid-template-columns: repeat(3, 1fr); }
+              .app-shell { padding-bottom: 82px; }
+              .mobile-bottom-nav {
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 50;
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 6px;
+                padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+                background: rgba(5,5,5,0.96);
+                border-top: 1px solid rgba(255,255,255,0.1);
+                backdrop-filter: blur(12px);
+              }
+              .mobile-bottom-nav button {
+                border: 1px solid rgba(255,255,255,0.1);
+                background: #151515;
+                color: #e5e7eb;
+                border-radius: 14px;
+                padding: 10px 6px;
+                font-size: 12px;
+                font-weight: 900;
+              }
+              .mobile-bottom-nav button.active { background: #dc2626; color: #fff; border-color: #dc2626; }
+              .mobile-register-submit {
+                position: sticky;
+                bottom: 78px;
+                z-index: 15;
+                box-shadow: 0 -10px 24px rgba(0,0,0,0.32);
+              }
+              input[type="file"].field { padding: 14px; background: #111; border: 1px dashed rgba(239,68,68,0.45); }
+            }
+            @media (min-width: 721px) {
+              .mobile-bottom-nav { display: none; }
             }
           `}</style>
 
@@ -1557,7 +1631,7 @@ export default function App() {
                         type="file"
                         accept="image/*"
                         multiple
-                        onChange={(e) => setImageFiles(Array.from(e.target.files || []).slice(0, 5))}
+                        onChange={handleImageFilesChange}
                       />
                       <div className="upload-box">사진은 최대 5장까지 업로드할 수 있습니다. 사진 없이도 등록 가능합니다.</div>
                       {imageFiles.length ? (
@@ -1569,7 +1643,7 @@ export default function App() {
                           ))}
                         </div>
                       ) : null}
-                      <button className="btn btn-primary" disabled={uploading} type="submit">
+                      <button className="btn btn-primary mobile-register-submit" disabled={uploading} type="submit">
                         {uploading ? '매물 등록 중입니다...' : '매물 등록 신청'}
                       </button>
 
@@ -1870,6 +1944,16 @@ export default function App() {
                 </div>
               </section>
             )}
+
+            <div className="mobile-bottom-nav">
+              <button className={activeTab === 'home' ? 'active' : ''} onClick={() => setActiveTab('home')}>홈</button>
+              <button className={activeTab === 'market' ? 'active' : ''} onClick={() => setActiveTab('market')}>매물</button>
+              <button className={activeTab === 'auction' ? 'active' : ''} onClick={() => setActiveTab('auction')}>경매</button>
+              <button
+                className={activeTab === 'register' ? 'active' : ''}
+                onClick={() => setActiveTab(isSeller || isAdmin ? 'register' : 'seller')}
+              >등록</button>
+            </div>
 
             <footer className="footer">
               © 2026 FORKLIFT MARKET. All rights reserved.
