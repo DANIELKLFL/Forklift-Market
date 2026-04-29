@@ -8,7 +8,6 @@ import {
 import {
   addDoc,
   collection,
-  getDoc,
   getDocs,
   deleteDoc,
   doc,
@@ -517,8 +516,7 @@ export default function App() {
         region: signupForm.region,
         businessType: memberType === 'seller' ? signupForm.businessType : '소비자',
         listingLimit: memberType === 'seller' ? DEFAULT_LISTING_LIMIT : 0,
-        sellerPostingAllowed: false,
-        auctionPostingAllowed: false,
+        sellerPostingAllowed: memberType === 'seller' ? true : false,
         showAsService: false,
         auctionVerified: memberType === 'buyer' ? false : true,
         bidDepositPaid: memberType === 'buyer' ? false : true,
@@ -528,7 +526,7 @@ export default function App() {
         createdAt: serverTimestamp(),
       });
       setSignupForm({ companyName: '', name: '', phone: '', email: '', password: '', region: '', businessType: '' });
-      setNotice(memberType === 'seller' ? '업체 회원가입이 완료되었습니다. 로그인은 가능하지만 관리자 승인 후 매물등록이 가능합니다.' : '소비자 회원가입이 완료되었습니다. 경매 입찰과 즉시구매가 가능합니다.');
+      setNotice(memberType === 'seller' ? '업체 회원가입이 완료되었습니다. 기본 매물 등록 한도는 4개입니다.' : '소비자 회원가입이 완료되었습니다. 경매 입찰과 즉시구매가 가능합니다.');
       setActiveTab(memberType === 'seller' ? 'dashboard' : 'market');
     } catch (error) {
       console.error('매물 등록 오류:', error);
@@ -557,30 +555,6 @@ export default function App() {
     setActiveTab('home');
   };
 
-  const handleImageFilesChange = async (e) => {
-    const pickedFiles = Array.from(e.target.files || []).slice(0, 5);
-
-    if (!pickedFiles.length) {
-      setImageFiles([]);
-      return;
-    }
-
-    try {
-      setNotice('사진을 등록 준비 중입니다. 잠시만 기다려주세요.');
-      const preparedFiles = await Promise.all(
-        pickedFiles.map((file) => compressImageFile(file, 1200, 0.72))
-      );
-      setImageFiles(preparedFiles);
-      setNotice(`${preparedFiles.length}장 사진이 선택되었습니다.`);
-    } catch (error) {
-      console.error('모바일 사진 준비 오류:', error);
-      setImageFiles(pickedFiles);
-      setNotice('사진 압축은 건너뛰고 원본 사진으로 등록 준비했습니다.');
-    } finally {
-      e.target.value = '';
-    }
-  };
-
   const handleCreateListing = async (e) => {
     e.preventDefault();
 
@@ -588,47 +562,27 @@ export default function App() {
     setUploading(true);
     setUploadProgress(0);
 
-    let companyForSubmit = currentCompany;
-
-    if (currentUser && !companyForSubmit) {
-      try {
-        const companySnap = await getDoc(doc(db, 'companies', currentUser.uid));
-        if (companySnap.exists()) {
-          companyForSubmit = { id: companySnap.id, ...companySnap.data() };
-          setCurrentCompany(companyForSubmit);
-        }
-      } catch (error) {
-        console.error('회원정보 재확인 오류:', error);
-      }
-    }
-
-    if (!currentUser || !companyForSubmit) {
-      setNotice('업체 회원정보 확인이 늦어지고 있습니다. 로그인 상태 확인 후 다시 눌러주세요.');
+    if (!currentUser || !currentCompany) {
+      setNotice('로그인한 업체 회원만 등록할 수 있습니다.');
       setActiveTab('seller');
       setUploading(false);
       return;
     }
 
-    if (companyForSubmit.memberType === 'buyer') {
+    if (currentCompany.memberType === 'buyer') {
       setNotice('소비자 회원은 매물을 등록할 수 없습니다. 업체회원만 등록 가능합니다.');
       setUploading(false);
       return;
     }
 
-    if (companyForSubmit.sellerPostingAllowed === false) {
-      setNotice('관리자 승인 후 매물등록이 가능합니다. 승인 전에는 등록할 수 없습니다.');
+    if (currentCompany.sellerPostingAllowed === false) {
+      setNotice('관리자에 의해 매물등록이 일시 중지된 업체회원입니다. 관리자에게 문의해주세요.');
       setUploading(false);
       return;
     }
 
-    if (listingForm.saleType === 'auction' && companyForSubmit.auctionPostingAllowed !== true) {
-      setNotice('경매물품 등록은 관리자에게 경매등록 권한을 받은 업체회원만 가능합니다.');
-      setUploading(false);
-      return;
-    }
-
-    const currentCount = getCompanyListingCount(companyForSubmit);
-    const limit = getCompanyLimit(companyForSubmit);
+    const currentCount = getCompanyListingCount(currentCompany);
+    const limit = getCompanyLimit(currentCompany);
 
     if (currentCount >= limit) {
       setNotice(`현재 등록 가능 한도는 ${limit}개입니다. 관리자에게 한도 상향을 요청해주세요.`);
@@ -687,10 +641,10 @@ export default function App() {
 
       // 2단계: 사진 URL을 포함해서 매물을 저장합니다.
       const listingDocRef = await addDoc(collection(db, 'listings'), {
-        companyId: companyForSubmit.id,
+        companyId: currentCompany.id,
         authUserId: currentUser.uid,
-        sellerName: companyForSubmit.companyName,
-        sellerPhone: companyForSubmit.phone || '',
+        sellerName: currentCompany.companyName,
+        sellerPhone: currentCompany.phone || '',
         title: listingForm.title,
         brand: listingForm.brand,
         ton: listingForm.ton,
@@ -727,7 +681,7 @@ export default function App() {
       if (listingForm.dealerPrice) {
         await setDoc(doc(db, 'dealerPrices', listingDocRef.id), {
           listingId: listingDocRef.id,
-          companyId: companyForSubmit.id,
+          companyId: currentCompany.id,
           authUserId: currentUser.uid,
           dealerPrice: Number(listingForm.dealerPrice),
           createdAt: serverTimestamp(),
@@ -1037,30 +991,6 @@ export default function App() {
             .nav { display: flex; gap: 10px; flex-wrap: wrap; }
             .nav button { padding: 11px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #e5e7eb; cursor: pointer; }
             .nav button.active { background: #dc2626; border-color: #dc2626; color: white; }
-            .visitor-badge {
-              padding: 11px 18px;
-              border-radius: 16px;
-              background: rgba(239,68,68,0.18);
-              border: 1px solid rgba(239,68,68,0.35);
-              color: #fca5a5;
-              font-size: 15px;
-              font-weight: 900;
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              white-space: nowrap;
-              word-break: keep-all;
-              flex-shrink: 0;
-              line-height: 1;
-            }
-            .visitor-badge-small {
-              padding: 9px 14px;
-              border-radius: 999px;
-              background: rgba(255,255,255,0.06);
-              border-color: rgba(255,255,255,0.12);
-              color: #fff;
-              font-size: 13px;
-            }
             .notice-wrap { position: sticky; top: 84px; z-index: 10; }
             .notice { margin-top: 14px; padding: 14px 16px; border-radius: 16px; background: rgba(220,38,38,0.12); border: 1px solid rgba(220,38,38,0.25); color: #fee2e2; }
             .hero { padding: 58px 0 34px; background: radial-gradient(circle at top right, rgba(220,38,38,0.24), transparent 18%), radial-gradient(circle at left, rgba(255,255,255,0.06), transparent 18%); }
@@ -1172,159 +1102,6 @@ export default function App() {
               .field, .select, .textarea { padding: 12px; border-radius: 13px; font-size: 14px; }
               .btn { padding: 12px 15px; border-radius: 13px; }
               .image-preview-grid { grid-template-columns: repeat(3, 1fr); }
-
-              /* 모바일 매물보기: 사진보다 모델명/가격/마스트/배터리 가독성 우선 */
-              .visitor-badge {
-                font-size: 12px;
-                padding: 8px 10px;
-                border-radius: 12px;
-                min-width: max-content;
-              }
-              .visitor-badge-small {
-                font-size: 12px;
-                padding: 8px 10px;
-              }
-              .listing-grid {
-                display: grid;
-                grid-template-columns: 1fr;
-                gap: 12px;
-              }
-              .listing-card {
-                display: grid;
-                grid-template-columns: 118px minmax(0, 1fr);
-                gap: 0;
-                border-radius: 18px;
-                min-height: 152px;
-              }
-              .listing-image {
-                height: 100%;
-                min-height: 152px;
-                border-radius: 0;
-              }
-              .listing-body {
-                padding: 12px;
-                min-width: 0;
-                display: flex;
-                flex-direction: column;
-              }
-              .listing-topline {
-                justify-content: flex-start;
-                gap: 6px;
-              }
-              .seller-name { display: none; }
-              .badge {
-                font-size: 10px;
-                padding: 5px 8px;
-              }
-              .listing-title {
-                font-size: 16px;
-                line-height: 1.32;
-                margin-top: 7px;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-              }
-              .listing-spec-grid {
-                grid-template-columns: 1fr;
-                gap: 5px;
-                margin-top: 8px;
-              }
-              .spec-box {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                gap: 10px;
-                padding: 6px 8px;
-                border-radius: 10px;
-              }
-              .spec-box span {
-                margin-bottom: 0;
-                font-size: 10px;
-                white-space: nowrap;
-              }
-              .spec-box strong {
-                font-size: 12px;
-                text-align: right;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-              }
-              .auction-mini {
-                grid-template-columns: 1fr;
-                gap: 5px;
-                margin-top: 8px;
-              }
-              .auction-mini div {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 7px 8px;
-                border-radius: 10px;
-              }
-              .auction-mini span { margin-bottom: 0; font-size: 10px; }
-              .auction-mini strong { font-size: 11px; }
-              .listing-footer {
-                margin-top: auto;
-                padding-top: 8px;
-                flex-direction: row;
-                align-items: center;
-                justify-content: space-between;
-                gap: 8px;
-              }
-              .price-label { display: none; }
-              .price-value {
-                font-size: 20px;
-                line-height: 1.1;
-                margin-top: 0;
-                white-space: nowrap;
-              }
-              .listing-footer .btn {
-                width: auto;
-                padding: 8px 10px;
-                border-radius: 10px;
-                font-size: 11px;
-                white-space: nowrap;
-              }
-              .listing-footer > div:last-child {
-                flex-shrink: 0;
-              }
-
-              .app-shell { padding-bottom: 82px; }
-              .mobile-bottom-nav {
-                position: fixed;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                z-index: 50;
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 6px;
-                padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
-                background: rgba(5,5,5,0.96);
-                border-top: 1px solid rgba(255,255,255,0.1);
-                backdrop-filter: blur(12px);
-              }
-              .mobile-bottom-nav button {
-                border: 1px solid rgba(255,255,255,0.1);
-                background: #151515;
-                color: #e5e7eb;
-                border-radius: 14px;
-                padding: 10px 6px;
-                font-size: 12px;
-                font-weight: 900;
-              }
-              .mobile-bottom-nav button.active { background: #dc2626; color: #fff; border-color: #dc2626; }
-              .mobile-register-submit {
-                position: sticky;
-                bottom: 78px;
-                z-index: 15;
-                box-shadow: 0 -10px 24px rgba(0,0,0,0.32);
-              }
-              input[type="file"].field { padding: 14px; background: #111; border: 1px dashed rgba(239,68,68,0.45); }
-            }
-            @media (min-width: 721px) {
-              .mobile-bottom-nav { display: none; }
             }
           `}</style>
 
@@ -1336,7 +1113,17 @@ export default function App() {
                   <div className="logo-sub">중고지게차 매물 플랫폼</div>
                 </div>
                 <nav className="nav">
-                  <div className="visitor-badge">
+                  <div style={{
+                    padding: '11px 18px',
+                    borderRadius: 16,
+                    background: 'rgba(239,68,68,0.18)',
+                    border: '1px solid rgba(239,68,68,0.35)',
+                    color: '#fca5a5',
+                    fontSize: 15,
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}>
                     방문자 {visitorCount.toLocaleString()}명
                   </div>
                   {[
@@ -1365,7 +1152,15 @@ export default function App() {
                     <div>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                         <div className="pill">업체 회원가입 · 매물 등록 · 경매 입찰</div>
-                        <div className="visitor-badge visitor-badge-small">
+                        <div style={{
+                          padding: '9px 14px',
+                          borderRadius: 999,
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          color: '#fff',
+                          fontSize: 13,
+                          fontWeight: 900
+                        }}>
                           방문자 {visitorCount.toLocaleString()}명
                         </div>
                       </div>
@@ -1762,7 +1557,7 @@ export default function App() {
                         type="file"
                         accept="image/*"
                         multiple
-                        onChange={handleImageFilesChange}
+                        onChange={(e) => setImageFiles(Array.from(e.target.files || []).slice(0, 5))}
                       />
                       <div className="upload-box">사진은 최대 5장까지 업로드할 수 있습니다. 사진 없이도 등록 가능합니다.</div>
                       {imageFiles.length ? (
@@ -1774,7 +1569,7 @@ export default function App() {
                           ))}
                         </div>
                       ) : null}
-                      <button className="btn btn-primary mobile-register-submit" disabled={uploading} type="submit">
+                      <button className="btn btn-primary" disabled={uploading} type="submit">
                         {uploading ? '매물 등록 중입니다...' : '매물 등록 신청'}
                       </button>
 
@@ -1792,11 +1587,11 @@ export default function App() {
                     <div className="glass-card">
                       <h3 className="flow-title">등록 안내</h3>
                       <div style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.9 }}>
-                        <p>업체 회원은 관리자에게 일반등록 권한을 받은 뒤 매물을 등록할 수 있고, 경매 판매는 별도의 경매등록 권한이 필요합니다.</p>
+                        <p>업체 회원은 일반 판매와 경매 판매를 선택해 등록할 수 있습니다.</p>
                         <p>배터리 등급은 소비자 기준으로 표시됩니다: 신품(신품급), A급(80~95%), B급(60~80%), C급(40~60%), 폐품(40% 이하).</p>
                         <p>모든 매물은 등록 직후 승인대기 상태이며, 관리자 승인 후 공개됩니다.</p>
                         <p>기본 등록 한도는 업체당 4개이며, 관리자가 최대 20개까지 조정할 수 있습니다.</p>
-                        <p>경매물품은 경매등록 권한이 있는 업체만 등록할 수 있으며 경매물품 탭에만 노출됩니다.</p>
+                        <p>경매물품은 경매물품 탭에만 노출됩니다.</p>
                       </div>
                     </div>
                   </div>
@@ -2032,7 +1827,7 @@ export default function App() {
                                 <>
                                   <div style={{ fontWeight: 900 }}>등록 {usedCount}개 / 한도 {limit}개</div>
                                   <div className="list-meta">
-                                    일반등록: {company.sellerPostingAllowed === false ? '중지' : '허용'} · 경매등록: {company.auctionPostingAllowed === true ? '허용' : '중지'} · A/S노출: {company.showAsService ? '노출중' : '숨김'}
+                                    등록권한: {company.sellerPostingAllowed === false ? '중지' : '허용'} · A/S노출: {company.showAsService ? '노출중' : '숨김'}
                                   </div>
                                   <button
                                     onClick={() => updateCompanyPermission(
@@ -2047,19 +1842,10 @@ export default function App() {
                                     onClick={() => updateCompanyPermission(
                                       company.id,
                                       { sellerPostingAllowed: company.sellerPostingAllowed === false ? true : false },
-                                      company.sellerPostingAllowed === false ? '업체 일반 매물등록을 허용했습니다.' : '업체 일반 매물등록을 중지했습니다.'
+                                      company.sellerPostingAllowed === false ? '업체 매물등록을 허용했습니다.' : '업체 매물등록을 중지했습니다.'
                                     )}
                                   >
-                                    {company.sellerPostingAllowed === false ? '일반등록 허용' : '일반등록 중지'}
-                                  </button>
-                                  <button
-                                    onClick={() => updateCompanyPermission(
-                                      company.id,
-                                      { auctionPostingAllowed: company.auctionPostingAllowed === true ? false : true },
-                                      company.auctionPostingAllowed === true ? '업체 경매물품 등록을 중지했습니다.' : '업체 경매물품 등록을 허용했습니다.'
-                                    )}
-                                  >
-                                    {company.auctionPostingAllowed === true ? '경매등록 중지' : '경매등록 허용'}
+                                    {company.sellerPostingAllowed === false ? '등록 허용' : '등록 중지'}
                                   </button>
                                   <select
                                     className="select"
@@ -2084,16 +1870,6 @@ export default function App() {
                 </div>
               </section>
             )}
-
-            <div className="mobile-bottom-nav">
-              <button className={activeTab === 'home' ? 'active' : ''} onClick={() => setActiveTab('home')}>홈</button>
-              <button className={activeTab === 'market' ? 'active' : ''} onClick={() => setActiveTab('market')}>매물</button>
-              <button className={activeTab === 'auction' ? 'active' : ''} onClick={() => setActiveTab('auction')}>경매</button>
-              <button
-                className={activeTab === 'register' ? 'active' : ''}
-                onClick={() => setActiveTab(isSeller || isAdmin ? 'register' : 'seller')}
-              >등록</button>
-            </div>
 
             <footer className="footer">
               © 2026 FORKLIFT MARKET. All rights reserved.
