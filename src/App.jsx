@@ -189,7 +189,7 @@ async function compressImageFile(file, maxWidth = 1200, quality = 0.72) {
 }
 
 
-function ListingCard({ item, isAdmin, onDelete, canViewDealerPrice, dealerPrice }) {
+function ListingCard({ item, isAdmin, onDelete }) {
   const navigate = useNavigate();
 
   const goToDetail = () => {
@@ -237,9 +237,6 @@ function ListingCard({ item, isAdmin, onDelete, canViewDealerPrice, dealerPrice 
           <div>
             <div className="price-label">{isAuction ? '현재 입찰가' : '판매가'}</div>
             <div className="price-value">{currentPrice ? `${currentPrice}만원` : '-'}</div>
-            {canViewDealerPrice && dealerPrice ? (
-              <div className="dealer-price-mini">업자가 {Number(dealerPrice).toLocaleString()}만원</div>
-            ) : null}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-light" onClick={goToDetail}>
@@ -289,15 +286,10 @@ export default function App() {
   const [editForm, setEditForm] = useState(initialForm);
   const [adminMemberFilter, setAdminMemberFilter] = useState('seller');
   const [visitorCount, setVisitorCount] = useState(0);
-  const [dealerPriceMap, setDealerPriceMap] = useState({});
 
   const isAdmin = currentUser?.email === 'best@example.com';
   const isSeller = currentCompany?.memberType !== 'buyer' && !!currentCompany;
   const isBuyer = currentCompany?.memberType === 'buyer';
-  const canViewDealerPrice = isAdmin || (
-    currentCompany?.memberType === 'seller' &&
-    (currentCompany?.sellerPostingAllowed === true || currentCompany?.auctionPostingAllowed === true)
-  );
 
   useEffect(() => {
     document.title = 'FORKLIFT MARKET | 중고지게차 매물 플랫폼';
@@ -359,33 +351,6 @@ export default function App() {
     const found = companies.find((item) => item.authUserId === currentUser.uid || item.id === currentUser.uid);
     setCurrentCompany(found || null);
   }, [companies, currentUser]);
-
-  useEffect(() => {
-    if (!canViewDealerPrice) {
-      setDealerPriceMap({});
-      return;
-    }
-
-    const unsubDealerPrices = onSnapshot(
-      collection(db, 'dealerPrices'),
-      (snapshot) => {
-        const nextMap = {};
-        snapshot.docs.forEach((dealerDoc) => {
-          const data = dealerDoc.data();
-          if (data?.listingId) {
-            nextMap[data.listingId] = data.dealerPrice;
-          }
-        });
-        setDealerPriceMap(nextMap);
-      },
-      (error) => {
-        console.error('업자가격 조회 권한 오류:', error);
-        setDealerPriceMap({});
-      }
-    );
-
-    return () => unsubDealerPrices();
-  }, [canViewDealerPrice]);
 
   useEffect(() => {
     if (!notice) return;
@@ -1152,7 +1117,6 @@ export default function App() {
             .listing-footer { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
             .price-label { color: #9ca3af; font-size: 12px; }
             .price-value { color: #ef4444; font-size: 28px; font-weight: 900; margin-top: 4px; }
-            .dealer-price-mini { display: inline-flex; margin-top: 7px; padding: 6px 9px; border-radius: 999px; background: rgba(250,204,21,0.12); border: 1px solid rgba(250,204,21,0.25); color: #fde68a; font-size: 12px; font-weight: 900; white-space: nowrap; }
             .feature-grid, .dashboard-grid, .three-col { display: grid; gap: 18px; }
             .feature-grid { grid-template-columns: 1.05fr 0.95fr; }
             .dashboard-grid { grid-template-columns: repeat(4, 1fr); }
@@ -1202,7 +1166,6 @@ export default function App() {
               .listing-spec-grid { gap: 8px; margin-top: 12px; }
               .spec-box { padding: 10px; border-radius: 14px; }
               .price-value { font-size: 24px; }
-              .dealer-price-mini { font-size: 11px; padding: 5px 8px; }
               .listing-footer, .list-item { flex-direction: column; align-items: stretch; }
               .listing-footer .btn, .small-actions button { width: 100%; }
               .limit-control { justify-content: flex-start; }
@@ -1459,7 +1422,7 @@ export default function App() {
                   <div className="container">
                     <SectionTitle eyebrow="Featured Listings" title="추천 매물" subtitle="승인 완료된 일반 매물만 사용자에게 노출됩니다." />
                     <div className="listing-grid">
-                      {(featuredListings.length ? featuredListings : visibleListings.slice(0, 3)).map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} canViewDealerPrice={canViewDealerPrice} dealerPrice={dealerPriceMap[item.id]} />)}
+                      {(featuredListings.length ? featuredListings : visibleListings.slice(0, 3)).map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} />)}
                     </div>
                   </div>
                 </section>
@@ -1472,7 +1435,7 @@ export default function App() {
                   <SectionTitle eyebrow="Marketplace" title="전체 매물" subtitle="일반 판매 매물만 브랜드, 톤수, 키워드로 검색할 수 있습니다." />
                   {renderFilterBox()}
                   <div className="listing-grid">
-                    {filteredListings.length ? displayedMarketListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} canViewDealerPrice={canViewDealerPrice} dealerPrice={dealerPriceMap[item.id]} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
+                    {filteredListings.length ? displayedMarketListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} />) : <div className="glass-card">검색 조건에 맞는 매물이 없습니다.</div>}
                   </div>
                 </div>
               </section>
@@ -1484,7 +1447,7 @@ export default function App() {
                   <SectionTitle eyebrow="Auction Market" title="경매물품" subtitle="입찰 방식으로 진행되는 중고지게차 경매 물품입니다." />
                   {renderFilterBox()}
                   <div className="listing-grid">
-                    {filteredAuctionListings.length ? displayedAuctionListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} canViewDealerPrice={canViewDealerPrice} dealerPrice={dealerPriceMap[item.id]} />) : <div className="glass-card">현재 등록된 경매물품이 없습니다.</div>}
+                    {filteredAuctionListings.length ? displayedAuctionListings.map((item) => <ListingCard key={item.id} item={item} isAdmin={isAdmin} onDelete={deleteListing} />) : <div className="glass-card">현재 등록된 경매물품이 없습니다.</div>}
                   </div>
                 </div>
               </section>
