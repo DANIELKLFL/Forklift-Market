@@ -6,7 +6,6 @@ import {
   collection,
   runTransaction,
   serverTimestamp,
-  getDoc,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -111,14 +110,16 @@ export default function ListingDetail() {
       return;
     }
 
-    getDoc(doc(db, 'dealerPrices', id))
-      .then((snap) => {
+    return onSnapshot(
+      doc(db, 'dealerPrices', id),
+      (snap) => {
         setDealerPrice(snap.exists() ? snap.data().dealerPrice : null);
-      })
-      .catch((error) => {
+      },
+      (error) => {
         console.error('업자가격 조회 권한 오류:', error);
         setDealerPrice(null);
-      });
+      }
+    );
   }, [id, user?.email, currentCompany?.memberType, currentCompany?.sellerPostingAllowed, currentCompany?.auctionPostingAllowed]);
 
   const images = item?.imageUrls || [];
@@ -375,8 +376,12 @@ export default function ListingDetail() {
             <div className="price">
               {isAuction ? (isAuctionEnded ? '경매 종료' : `시작가 ${item.auctionStartPrice || item.price || '-'}만원`) : `판매가 ${item.price || '-'}만원`}
             </div>
-            {canViewDealerPrice && dealerPrice ? (
-              <div className="dealer-price-box">업자 전용가 {Number(dealerPrice).toLocaleString()}만원</div>
+            {canViewDealerPrice ? (
+              dealerPrice !== null && dealerPrice !== undefined && dealerPrice !== '' ? (
+                <div className="dealer-price-box">업자 전용가 {Number(dealerPrice).toLocaleString()}만원</div>
+              ) : (
+                <div className="dealer-price-empty">업자가격 미등록</div>
+              )
             ) : null}
 
             <div className="spec-grid">
