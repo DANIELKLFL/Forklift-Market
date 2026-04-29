@@ -6,9 +6,12 @@ import {
   collection,
   runTransaction,
   serverTimestamp,
+  getDoc,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+
+const ADMIN_EMAILS = ['best@example.com'];
 
 function getResizedImage(url, size) {
   if (!url || !size) return url;
@@ -71,6 +74,7 @@ export default function ListingDetail() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [dealerPrice, setDealerPrice] = useState(null);
 
   const touchStartX = useRef(0);
   const pinchStartDistance = useRef(null);
@@ -96,6 +100,26 @@ export default function ListingDetail() {
       setItem(snap.exists() ? { id: snap.id, ...snap.data() } : null);
     });
   }, [id]);
+
+  useEffect(() => {
+    const isAdminUser = ADMIN_EMAILS.includes(user?.email || '');
+    const allowedSeller = currentCompany?.memberType === 'seller' &&
+      (currentCompany?.sellerPostingAllowed === true || currentCompany?.auctionPostingAllowed === true);
+
+    if (!id || (!isAdminUser && !allowedSeller)) {
+      setDealerPrice(null);
+      return;
+    }
+
+    getDoc(doc(db, 'dealerPrices', id))
+      .then((snap) => {
+        setDealerPrice(snap.exists() ? snap.data().dealerPrice : null);
+      })
+      .catch((error) => {
+        console.error('업자가격 조회 권한 오류:', error);
+        setDealerPrice(null);
+      });
+  }, [id, user?.email, currentCompany?.memberType, currentCompany?.sellerPostingAllowed, currentCompany?.auctionPostingAllowed]);
 
   const images = item?.imageUrls || [];
   const thumbs = item?.thumbnailUrls?.length ? item.thumbnailUrls : images;
@@ -213,6 +237,11 @@ export default function ListingDetail() {
     : false;
 
   const auctionPermissionMessage = getAuctionPermissionMessage(user, currentCompany, item);
+  const isAdmin = ADMIN_EMAILS.includes(user?.email || '');
+  const canViewDealerPrice = isAdmin || (
+    currentCompany?.memberType === 'seller' &&
+    (currentCompany?.sellerPostingAllowed === true || currentCompany?.auctionPostingAllowed === true)
+  );
 
   const specRows = [
     ['브랜드', item.brand || '-'],
@@ -346,6 +375,9 @@ export default function ListingDetail() {
             <div className="price">
               {isAuction ? (isAuctionEnded ? '경매 종료' : `시작가 ${item.auctionStartPrice || item.price || '-'}만원`) : `판매가 ${item.price || '-'}만원`}
             </div>
+            {canViewDealerPrice && dealerPrice ? (
+              <div className="dealer-price-box">업자 전용가 {Number(dealerPrice).toLocaleString()}만원</div>
+            ) : null}
 
             <div className="spec-grid">
               {specRows.map(([label, value]) => (
