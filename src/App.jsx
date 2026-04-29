@@ -517,7 +517,8 @@ export default function App() {
         region: signupForm.region,
         businessType: memberType === 'seller' ? signupForm.businessType : '소비자',
         listingLimit: memberType === 'seller' ? DEFAULT_LISTING_LIMIT : 0,
-        sellerPostingAllowed: memberType === 'seller' ? true : false,
+        sellerPostingAllowed: false,
+        auctionPostingAllowed: false,
         showAsService: false,
         auctionVerified: memberType === 'buyer' ? false : true,
         bidDepositPaid: memberType === 'buyer' ? false : true,
@@ -527,7 +528,7 @@ export default function App() {
         createdAt: serverTimestamp(),
       });
       setSignupForm({ companyName: '', name: '', phone: '', email: '', password: '', region: '', businessType: '' });
-      setNotice(memberType === 'seller' ? '업체 회원가입이 완료되었습니다. 기본 매물 등록 한도는 4개입니다.' : '소비자 회원가입이 완료되었습니다. 경매 입찰과 즉시구매가 가능합니다.');
+      setNotice(memberType === 'seller' ? '업체 회원가입이 완료되었습니다. 로그인은 가능하지만 관리자 승인 후 매물등록이 가능합니다.' : '소비자 회원가입이 완료되었습니다. 경매 입찰과 즉시구매가 가능합니다.');
       setActiveTab(memberType === 'seller' ? 'dashboard' : 'market');
     } catch (error) {
       console.error('매물 등록 오류:', error);
@@ -615,7 +616,13 @@ export default function App() {
     }
 
     if (companyForSubmit.sellerPostingAllowed === false) {
-      setNotice('관리자에 의해 매물등록이 일시 중지된 업체회원입니다. 관리자에게 문의해주세요.');
+      setNotice('관리자 승인 후 매물등록이 가능합니다. 승인 전에는 등록할 수 없습니다.');
+      setUploading(false);
+      return;
+    }
+
+    if (listingForm.saleType === 'auction' && companyForSubmit.auctionPostingAllowed !== true) {
+      setNotice('경매물품 등록은 관리자에게 경매등록 권한을 받은 업체회원만 가능합니다.');
       setUploading(false);
       return;
     }
@@ -1785,11 +1792,11 @@ export default function App() {
                     <div className="glass-card">
                       <h3 className="flow-title">등록 안내</h3>
                       <div style={{ marginTop: 18, color: '#d1d5db', lineHeight: 1.9 }}>
-                        <p>업체 회원은 일반 판매와 경매 판매를 선택해 등록할 수 있습니다.</p>
+                        <p>업체 회원은 관리자에게 일반등록 권한을 받은 뒤 매물을 등록할 수 있고, 경매 판매는 별도의 경매등록 권한이 필요합니다.</p>
                         <p>배터리 등급은 소비자 기준으로 표시됩니다: 신품(신품급), A급(80~95%), B급(60~80%), C급(40~60%), 폐품(40% 이하).</p>
                         <p>모든 매물은 등록 직후 승인대기 상태이며, 관리자 승인 후 공개됩니다.</p>
                         <p>기본 등록 한도는 업체당 4개이며, 관리자가 최대 20개까지 조정할 수 있습니다.</p>
-                        <p>경매물품은 경매물품 탭에만 노출됩니다.</p>
+                        <p>경매물품은 경매등록 권한이 있는 업체만 등록할 수 있으며 경매물품 탭에만 노출됩니다.</p>
                       </div>
                     </div>
                   </div>
@@ -2025,7 +2032,7 @@ export default function App() {
                                 <>
                                   <div style={{ fontWeight: 900 }}>등록 {usedCount}개 / 한도 {limit}개</div>
                                   <div className="list-meta">
-                                    등록권한: {company.sellerPostingAllowed === false ? '중지' : '허용'} · A/S노출: {company.showAsService ? '노출중' : '숨김'}
+                                    일반등록: {company.sellerPostingAllowed === false ? '중지' : '허용'} · 경매등록: {company.auctionPostingAllowed === true ? '허용' : '중지'} · A/S노출: {company.showAsService ? '노출중' : '숨김'}
                                   </div>
                                   <button
                                     onClick={() => updateCompanyPermission(
@@ -2040,10 +2047,19 @@ export default function App() {
                                     onClick={() => updateCompanyPermission(
                                       company.id,
                                       { sellerPostingAllowed: company.sellerPostingAllowed === false ? true : false },
-                                      company.sellerPostingAllowed === false ? '업체 매물등록을 허용했습니다.' : '업체 매물등록을 중지했습니다.'
+                                      company.sellerPostingAllowed === false ? '업체 일반 매물등록을 허용했습니다.' : '업체 일반 매물등록을 중지했습니다.'
                                     )}
                                   >
-                                    {company.sellerPostingAllowed === false ? '등록 허용' : '등록 중지'}
+                                    {company.sellerPostingAllowed === false ? '일반등록 허용' : '일반등록 중지'}
+                                  </button>
+                                  <button
+                                    onClick={() => updateCompanyPermission(
+                                      company.id,
+                                      { auctionPostingAllowed: company.auctionPostingAllowed === true ? false : true },
+                                      company.auctionPostingAllowed === true ? '업체 경매물품 등록을 중지했습니다.' : '업체 경매물품 등록을 허용했습니다.'
+                                    )}
+                                  >
+                                    {company.auctionPostingAllowed === true ? '경매등록 중지' : '경매등록 허용'}
                                   </button>
                                   <select
                                     className="select"
