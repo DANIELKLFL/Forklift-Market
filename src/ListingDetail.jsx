@@ -64,7 +64,6 @@ export default function ListingDetail() {
   const { id } = useParams();
 
   const [item, setItem] = useState(null);
-  const [dealerPrice, setDealerPrice] = useState(null);
   const [user, setUser] = useState(null);
   const [currentCompany, setCurrentCompany] = useState(null);
   const [bidAmount, setBidAmount] = useState('');
@@ -96,20 +95,6 @@ export default function ListingDetail() {
     return onSnapshot(doc(db, 'listings', id), (snap) => {
       setItem(snap.exists() ? { id: snap.id, ...snap.data() } : null);
     });
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-
-    return onSnapshot(
-      doc(db, 'dealerPrices', id),
-      (snap) => {
-        setDealerPrice(snap.exists() ? Number(snap.data().dealerPrice || 0) : null);
-      },
-      () => {
-        setDealerPrice(null);
-      }
-    );
   }, [id]);
 
   const images = item?.imageUrls || [];
@@ -228,10 +213,6 @@ export default function ListingDetail() {
     : false;
 
   const auctionPermissionMessage = getAuctionPermissionMessage(user, currentCompany, item);
-  const canSeeDealerPrice =
-    currentCompany &&
-    currentCompany.memberType !== 'buyer' &&
-    currentCompany.sellerPostingAllowed === true;
 
   return (
     <div style={{ padding: 40, background: '#0a0a0a', color: '#fff', minHeight: '100vh' }}>
@@ -295,23 +276,6 @@ export default function ListingDetail() {
       <h2 style={{ color: '#ef4444', marginTop: 30 }}>
         {isAuction ? (isAuctionEnded ? '경매 종료' : '비공개 경매 진행 중') : `판매가 ${item.price}만원`}
       </h2>
-
-      {canSeeDealerPrice && (
-        <div
-          style={{
-            marginTop: 12,
-            maxWidth: 420,
-            padding: 14,
-            borderRadius: 14,
-            background: 'rgba(34,197,94,0.12)',
-            border: '1px solid rgba(34,197,94,0.24)',
-            color: '#86efac',
-            fontWeight: 900,
-          }}
-        >
-          업자가격: {dealerPrice ? `${dealerPrice.toLocaleString()}만원` : '미등록'}
-        </div>
-      )}
 
       <div style={{ lineHeight: 1.8 }}>
         <p>{item.brand} · {item.ton} · {item.year}년식</p>
